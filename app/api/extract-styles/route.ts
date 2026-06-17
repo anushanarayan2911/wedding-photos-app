@@ -4,74 +4,209 @@ import * as cheerio from "cheerio";
 export interface ExtractedStyles {
   backgroundColors: string[];
   textColors: string[];
-  fonts: { family: string; category: string; weight?: string }[];
+  accentColors: string[];
+  fonts: { family: string; category: string }[];
   url: string;
 }
 
-// ── Color extraction ────────────────────────────────────────────────────────
-
-const COLOR_RE = /#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[\d.]+)?\s*\)|hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%(?:\s*,\s*[\d.]+)?\s*\)/gi;
+// ── Noise filters ─────────────────────────────────────────────────────────────
 
 const NOISE_COLORS = new Set([
   "#000", "#000000", "#fff", "#ffffff",
   "rgb(0,0,0)", "rgb(255,255,255)",
-  "rgba(0,0,0,0)", "rgba(0,0,0,1)", "rgba(255,255,255,0)", "rgba(255,255,255,1)",
+  "rgba(0,0,0,0)", "rgba(0,0,0,1)",
+  "rgba(255,255,255,0)", "rgba(255,255,255,1)",
   "transparent",
 ]);
 
-/** Returns true for near-transparent rgba/hsla (alpha < 0.15). */
 function isLowAlpha(c: string): boolean {
-  const m = c.match(/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i)
-    ?? c.match(/hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*,\s*([\d.]+)\s*\)/i);
-  if (m) return parseFloat(m[1]) < 0.15;
-  return false;
+  const m =
+    c.match(/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i) ??
+    c.match(/hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*,\s*([\d.]+)\s*\)/i);
+  return m ? parseFloat(m[1]) < 0.15 : false;
 }
 
 function isNoiseColor(c: string): boolean {
   return NOISE_COLORS.has(c) || isLowAlpha(c);
 }
 
-/** Extract raw color tokens from a CSS value string (skips url() segments). */
+// ── Color token extraction ────────────────────────────────────────────────────
+
+const COLOR_RE =
+  /#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[\d.]+)?\s*\)|hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%(?:\s*,\s*[\d.]+)?\s*\)/gi;
+
 function colorsFromValue(value: string): string[] {
-  // Remove url(...) fragments first so we never pick up data URIs or image paths
   const stripped = value.replace(/url\([^)]*\)/gi, "");
-  const matches = stripped.match(COLOR_RE) ?? [];
-  return matches.map((m) => m.toLowerCase().trim()).filter((c) => !isNoiseColor(c));
+  return (stripped.match(COLOR_RE) ?? [])
+    .map((m) => m.toLowerCase().trim())
+    .filter((c) => !isNoiseColor(c));
 }
 
-/** Walk every declaration in the CSS and collect colors from specific properties. */
-function extractColorsByProp(
-  css: string,
-  properties: string[]
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  // Match "property: value" pairs; the lookbehind stops us matching inside urls
-  const propGroup = properties.join("|");
-  const re = new RegExp(`(?:^|[;{,\\s])(?:${propGroup})\\s*:\\s*([^;}{]+)`, "gim");
+// ── Selector classification ───────────────────────────────────────────────────
+
+// Structural page elements → high-priority backgrounds
+const BG_STRUCTURAL =
+  /(?:^|[\s,>+~])(?:html|body|main|article|section|header|footer|#root|#app|#__next|#content)\b/i;
+const BG_CLASS =
+  /\.(?:page|container|wrapper|layout|content|hero|banner|bg[-_]|background|backdrop|overlay|site)/i;
+
+// Text-bearing elements → high-priority text colours
+const TEXT_STRUCTURAL =
+  /(?:^|[\s,>+~])(?:h[1-6]|p|a|li|blockquote|label|cite|figcaption|address)\b/i;
+const TEXT_CLASS =
+  /\.(?:text[-_]|heading|title|subtitle|description|caption|copy|body|paragraph|label|link)/i;
+
+// Explicit UI component selectors → accent / lower priority
+const UI_SELECTOR =
+  /(?:^|[\s,>+~])(?:button|input|select|textarea|nav|menu|aside)\b|\.(?:btn|button|badge|tag|chip|pill|card|cta|nav|menu|form|input)/i;
+
+interface SelectorKind {
+  isBackground: boolean;
+  isText: boolean;
+  isUi: boolean;
+}
+
+function classifySelector(selector: string): SelectorKind {
+  const s = selector.replace(/::?[\w-]+/g, ""); // strip pseudo-elements/classes
+  return {
+    isBackground: BG_STRUCTURAL.test(s) || BG_CLASS.test(s),
+    isText: TEXT_STRUCTURAL.test(s) || TEXT_CLASS.test(s),
+    isUi: UI_SELECTOR.test(s),
+  };
+}
+
+// ── CSS rule parser ───────────────────────────────────────────────────────────
+
+interface CssRule {
+  selector: string;
+  declarations: string;
+}
+
+function parseCssRules(css: string): CssRule[] {
+  // Strip comments
+  let c = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // Strip @keyframes entirely (colour values inside are animation noise)
+  c = c.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^}]*\})*[^{}]*\}/g, "");
+  // Flatten one level of @media / @supports / @layer so inner rules are visible
+  c = c.replace(
+    /@(?:media|supports|layer)[^{]*\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g,
+    "$1"
+  );
+
+  const rules: CssRule[] = [];
+  const ruleRe = /([^{}@][^{}]*)\{([^{}]*)\}/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(css)) !== null) {
-    for (const color of colorsFromValue(m[1])) {
-      counts.set(color, (counts.get(color) ?? 0) + 1);
+  while ((m = ruleRe.exec(c)) !== null) {
+    const selector = m[1].trim();
+    if (!selector) continue;
+    rules.push({ selector, declarations: m[2] });
+  }
+  return rules;
+}
+
+function getDeclarationValue(declarations: string, property: string): string[] {
+  const re = new RegExp(`(?:^|[;\\s])${property}\\s*:\\s*([^;}{]+)`, "gi");
+  const values: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(declarations)) !== null) {
+    const val = m[1].trim();
+    if (!val.includes("url(")) values.push(val);
+  }
+  return values;
+}
+
+// ── Weighted color scoring ────────────────────────────────────────────────────
+
+type Bucket = "background" | "text" | "accent";
+
+interface ColorScore {
+  background: number;
+  text: number;
+  accent: number;
+}
+
+function scoreColors(rules: CssRule[]): Map<string, ColorScore> {
+  const scores = new Map<string, ColorScore>();
+
+  function add(color: string, bucket: Bucket, weight: number) {
+    const s = scores.get(color) ?? { background: 0, text: 0, accent: 0 };
+    s[bucket] += weight;
+    scores.set(color, s);
+  }
+
+  for (const { selector, declarations } of rules) {
+    const kind = classifySelector(selector);
+
+    // Background-color / background shorthand
+    for (const prop of ["background-color", "background"]) {
+      for (const val of getDeclarationValue(declarations, prop)) {
+        for (const color of colorsFromValue(val)) {
+          if (kind.isBackground) add(color, "background", 10);
+          else if (kind.isUi) add(color, "accent", 3);
+          else add(color, "background", 4); // unclassified — lean background
+        }
+      }
+    }
+
+    // color (text colour)
+    for (const val of getDeclarationValue(declarations, "color")) {
+      for (const color of colorsFromValue(val)) {
+        if (kind.isText) add(color, "text", 10);
+        else if (kind.isBackground) add(color, "text", 7); // body text colour
+        else if (kind.isUi) add(color, "accent", 3);
+        else add(color, "text", 4);
+      }
+    }
+
+    // border-color → accent signal
+    for (const prop of ["border-color", "border", "outline-color"]) {
+      for (const val of getDeclarationValue(declarations, prop)) {
+        for (const color of colorsFromValue(val)) {
+          add(color, "accent", kind.isUi ? 5 : 2);
+        }
+      }
     }
   }
-  return counts;
+
+  return scores;
 }
 
-/** Return top N colors sorted by frequency. */
-function topColors(counts: Map<string, number>, n: number): string[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
+function topByBucket(
+  scores: Map<string, ColorScore>,
+  bucket: Bucket,
+  exclude: Set<string>,
+  n: number
+): string[] {
+  return [...scores.entries()]
+    .filter(([c]) => !exclude.has(c))
+    .sort((a, b) => b[1][bucket] - a[1][bucket])
+    .filter(([, s]) => s[bucket] > 0)
     .slice(0, n)
-    .map(([color]) => color);
+    .map(([c]) => c);
 }
 
-// ── Font extraction ─────────────────────────────────────────────────────────
+// ── CSS variable colors (brand tokens in :root) ───────────────────────────────
+
+function extractCssVariableColors(css: string): string[] {
+  const rootBlockRe = /(?::root|html|body)\s*\{([^}]+)\}/gi;
+  const varColorRe = /--[\w-]+\s*:\s*([^;}{]+)/gi;
+  const colors: string[] = [];
+  let bm: RegExpExecArray | null;
+  while ((bm = rootBlockRe.exec(css)) !== null) {
+    let vm: RegExpExecArray | null;
+    while ((vm = varColorRe.exec(bm[1])) !== null) {
+      colors.push(...colorsFromValue(vm[1]));
+    }
+  }
+  return colors;
+}
+
+// ── Font extraction ───────────────────────────────────────────────────────────
 
 const ICON_FONT_KEYWORDS = [
   "fontawesome", "font awesome", "material icons", "material-icons",
   "glyphicons", "icomoon", "ionicons", "themify", "genericons",
   "dashicons", "entypo", "linearicons", "feather", "remixicon",
-  // UI library / slider internal fonts
   "slick", "swiper", "owl",
 ];
 
@@ -84,21 +219,26 @@ const SKIP_FONT_VALUES = new Set(["inherit", "initial", "unset", "revert", "none
 
 function isUsableFont(name: string): boolean {
   const lower = name.toLowerCase();
-  if (SKIP_FONT_VALUES.has(lower)) return false;
-  if (ICON_FONT_KEYWORDS.some((k) => lower.includes(k))) return false;
-  if (SYSTEM_FONT_KEYWORDS.some((k) => lower.includes(k))) return false;
-  return true;
+  return (
+    !SKIP_FONT_VALUES.has(lower) &&
+    !ICON_FONT_KEYWORDS.some((k) => lower.includes(k)) &&
+    !SYSTEM_FONT_KEYWORDS.some((k) => lower.includes(k))
+  );
 }
 
 function categoriseFont(name: string): string {
   const lower = name.toLowerCase();
-  const serif = ["serif", "times", "georgia", "garamond", "baskerville", "palatino",
-    "playfair", "cormorant", "crimson", "merriweather", "lora", "libre baskerville",
-    "bodoni", "caslon", "minion", "sabon", "didot", "trajan", "eb garamond"];
+  const serif = [
+    "serif", "times", "georgia", "garamond", "baskerville", "palatino",
+    "playfair", "cormorant", "crimson", "merriweather", "lora",
+    "libre baskerville", "bodoni", "caslon", "didot", "trajan", "eb garamond",
+  ];
   const mono = ["mono", "code", "courier", "consolas", "fira", "source code", "roboto mono", "inconsolata"];
-  const display = ["display", "headline", "poster", "abril", "lobster", "pacifico",
+  const display = [
+    "display", "headline", "poster", "abril", "lobster", "pacifico",
     "dancing", "great vibes", "sacramento", "satisfy", "allura", "alex brush",
-    "pinyon", "mr dafoe", "rouge script", "tangerine", "italianno"];
+    "pinyon", "mr dafoe", "rouge script", "tangerine", "italianno",
+  ];
   if (display.some((d) => lower.includes(d))) return "Display";
   if (mono.some((d) => lower.includes(d))) return "Monospace";
   if (serif.some((d) => lower.includes(d))) return "Serif";
@@ -108,13 +248,10 @@ function categoriseFont(name: string): string {
 function extractFonts(css: string): { family: string; category: string }[] {
   const found = new Map<string, string>();
 
-  // font-family declarations
   const re = /font-family\s*:\s*([^;}{]+)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(css)) !== null) {
-    const stack = m[1].trim();
-    // Take the first named font in the stack
-    for (const raw of stack.split(",")) {
+    for (const raw of m[1].split(",")) {
       const name = raw.replace(/['"]/g, "").trim();
       if (isUsableFont(name)) {
         found.set(name, categoriseFont(name));
@@ -123,12 +260,9 @@ function extractFonts(css: string): { family: string; category: string }[] {
     }
   }
 
-  // Google Fonts @import / link URLs: family=Playfair+Display:wght@400,700
   const gfRe = /family=([^&"')#\s]+)/gi;
   while ((m = gfRe.exec(css)) !== null) {
-    const segment = decodeURIComponent(m[1]);
-    // Can be pipe-separated: Lora|Playfair+Display
-    for (const entry of segment.split("|")) {
+    for (const entry of decodeURIComponent(m[1]).split("|")) {
       const name = entry.split(":")[0].replace(/\+/g, " ").trim();
       if (name && isUsableFont(name) && !found.has(name)) {
         found.set(name, categoriseFont(name));
@@ -136,32 +270,10 @@ function extractFonts(css: string): { family: string; category: string }[] {
     }
   }
 
-  return [...found.entries()]
-    .map(([family, category]) => ({ family, category }))
-    .slice(0, 5);
+  return [...found.entries()].map(([family, category]) => ({ family, category })).slice(0, 5);
 }
 
-// ── CSS variable extraction (brand tokens in :root) ─────────────────────────
-
-function extractCssVariableColors(css: string): string[] {
-  // Find :root / html / body blocks and pull --var: <color> declarations
-  const rootBlockRe = /(?::root|html|body)\s*\{([^}]+)\}/gi;
-  const varColorRe = /--[\w-]+\s*:\s*([^;}{]+)/gi;
-  const colors: string[] = [];
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = rootBlockRe.exec(css)) !== null) {
-    const block = blockMatch[1];
-    let varMatch: RegExpExecArray | null;
-    while ((varMatch = varColorRe.exec(block)) !== null) {
-      for (const color of colorsFromValue(varMatch[1])) {
-        colors.push(color);
-      }
-    }
-  }
-  return colors;
-}
-
-// ── HTTP helpers ─────────────────────────────────────────────────────────────
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -172,7 +284,7 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
-// ── Route handler ────────────────────────────────────────────────────────────
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   let url: string;
@@ -194,9 +306,8 @@ export async function POST(req: NextRequest) {
 
     $("style").each((_, el) => cssChunks.push($(el).text()));
 
-    // Inline styles on <body> and major structural elements
-    const inlineTargets = ["body", "header", "main", "section", "footer", "nav"];
-    for (const tag of inlineTargets) {
+    // Inline styles on structural elements — prepend selector so classifier works
+    for (const tag of ["body", "header", "main", "section", "footer", "nav", "article"]) {
       $(tag).each((_, el) => {
         const style = $(el).attr("style");
         if (style) cssChunks.push(`${tag} { ${style} }`);
@@ -216,35 +327,41 @@ export async function POST(req: NextRequest) {
     }
 
     const allCss = cssChunks.join("\n");
+    const rules = parseCssRules(allCss);
+    const scores = scoreColors(rules);
 
-    // Background colours: background-color + solid background shorthand
-    const bgCounts = extractColorsByProp(allCss, ["background-color", "background"]);
-
-    // Text colours: color property only
-    const textCounts = extractColorsByProp(allCss, ["color"]);
-
-    // Boost colours declared as CSS variables in :root/html/body
-    const varColors = extractCssVariableColors(allCss);
-    for (const c of varColors) {
-      bgCounts.set(c, (bgCounts.get(c) ?? 0) + 5);
-      textCounts.set(c, (textCounts.get(c) ?? 0) + 5);
+    // Boost CSS variable colors declared in :root/html/body as brand tokens
+    for (const c of extractCssVariableColors(allCss)) {
+      const s = scores.get(c) ?? { background: 0, text: 0, accent: 0 };
+      s.background += 6;
+      s.text += 6;
+      scores.set(c, s);
     }
 
-    // meta theme-color as a strong background signal
+    // meta theme-color → strong background signal
     const themeColor = $('meta[name="theme-color"]').attr("content")?.toLowerCase().trim();
     if (themeColor && !isNoiseColor(themeColor)) {
-      bgCounts.set(themeColor, (bgCounts.get(themeColor) ?? 0) + 10);
+      const s = scores.get(themeColor) ?? { background: 0, text: 0, accent: 0 };
+      s.background += 15;
+      scores.set(themeColor, s);
     }
 
-    const backgroundColors = topColors(bgCounts, 6);
-    const textColors = topColors(textCounts, 4).filter(
-      (c) => !backgroundColors.includes(c)
-    );
+    const used = new Set<string>();
+    const backgroundColors = topByBucket(scores, "background", used, 5);
+    backgroundColors.forEach((c) => used.add(c));
+    const textColors = topByBucket(scores, "text", used, 4);
+    textColors.forEach((c) => used.add(c));
+    const accentColors = topByBucket(scores, "accent", used, 3);
 
     const fonts = extractFonts(allCss);
 
-    const result: ExtractedStyles = { backgroundColors, textColors, fonts, url };
-    return NextResponse.json(result);
+    return NextResponse.json({
+      backgroundColors,
+      textColors,
+      accentColors,
+      fonts,
+      url,
+    } satisfies ExtractedStyles);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to fetch site";
     return NextResponse.json({ error: message }, { status: 500 });

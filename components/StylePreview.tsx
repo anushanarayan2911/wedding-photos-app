@@ -6,6 +6,7 @@ interface FontResult {
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
+  accentColors: string[];
   fonts: FontResult[];
   url: string;
 }
@@ -16,8 +17,11 @@ interface Props {
 }
 
 export default function StylePreview({ result, loading }: Props) {
-  const hasColors =
-    result && (result.backgroundColors.length > 0 || result.textColors.length > 0);
+  const hasResult = result && (
+    result.backgroundColors.length > 0 ||
+    result.textColors.length > 0 ||
+    result.accentColors.length > 0
+  );
 
   return (
     <div className="border border-gray-200 rounded p-6 space-y-5">
@@ -25,27 +29,13 @@ export default function StylePreview({ result, loading }: Props) {
         Style Preview
       </p>
 
-      {/* Background colours */}
-      <SwatchRow
-        label="Background colours"
-        colors={result?.backgroundColors ?? []}
-        loading={loading}
-        placeholderCount={4}
-      />
-
-      {/* Text colours */}
-      <SwatchRow
-        label="Text colours"
-        colors={result?.textColors ?? []}
-        loading={loading}
-        placeholderCount={3}
-      />
+      <SwatchRow label="Background" colors={result?.backgroundColors ?? []} loading={loading} placeholderCount={4} />
+      <SwatchRow label="Text" colors={result?.textColors ?? []} loading={loading} placeholderCount={3} />
+      <SwatchRow label="UI / Accent" colors={result?.accentColors ?? []} loading={loading} placeholderCount={2} />
 
       {/* Fonts */}
       <div className="border border-gray-200 rounded px-4 py-3">
-        <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">
-          Fonts
-        </p>
+        <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Fonts</p>
         {loading ? (
           <div className="space-y-2">
             <div className="h-4 bg-gray-200 rounded animate-pulse w-44" />
@@ -67,7 +57,7 @@ export default function StylePreview({ result, loading }: Props) {
 
       <button
         className="w-full border border-gray-300 rounded py-3 text-sm font-mono text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
-        disabled={loading || !hasColors}
+        disabled={loading || !hasResult}
       >
         Looks good, continue
       </button>
@@ -88,9 +78,7 @@ function SwatchRow({
 }) {
   return (
     <div>
-      <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">
-        {label}
-      </p>
+      <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">{label}</p>
       <div className="flex flex-wrap gap-2">
         {loading
           ? Array.from({ length: placeholderCount }).map((_, i) => (

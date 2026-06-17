@@ -12,6 +12,7 @@ interface FontResult {
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
+  accentColors: string[];
   fonts: FontResult[];
   url: string;
 }
