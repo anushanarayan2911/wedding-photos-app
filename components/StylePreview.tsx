@@ -4,7 +4,8 @@ interface FontResult {
 }
 
 interface ExtractResult {
-  colors: string[];
+  backgroundColors: string[];
+  textColors: string[];
   fonts: FontResult[];
   url: string;
 }
@@ -15,42 +16,43 @@ interface Props {
 }
 
 export default function StylePreview({ result, loading }: Props) {
+  const hasColors =
+    result && (result.backgroundColors.length > 0 || result.textColors.length > 0);
+
   return (
     <div className="border border-gray-200 rounded p-6 space-y-5">
       <p className="font-mono font-bold text-xs uppercase tracking-widest text-gray-700">
         Style Preview
       </p>
 
-      <div>
-        <p className="text-xs font-mono text-gray-500 mb-3">
-          Colors, fonts &amp; patterns detected:
-        </p>
+      {/* Background colours */}
+      <SwatchRow
+        label="Background colours"
+        colors={result?.backgroundColors ?? []}
+        loading={loading}
+        placeholderCount={4}
+      />
 
-        {/* Color swatches */}
-        <div className="flex flex-wrap gap-2">
-          {loading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-10 h-10 rounded bg-gray-200 animate-pulse"
-                />
-              ))
-            : result && result.colors.length > 0
-            ? result.colors.map((color, i) => (
-                <ColorSwatch key={i} color={color} />
-              ))
-            : Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="w-10 h-10 rounded bg-gray-200" />
-              ))}
-        </div>
-      </div>
+      {/* Text colours */}
+      <SwatchRow
+        label="Text colours"
+        colors={result?.textColors ?? []}
+        loading={loading}
+        placeholderCount={3}
+      />
 
-      {/* Font display */}
+      {/* Fonts */}
       <div className="border border-gray-200 rounded px-4 py-3">
+        <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">
+          Fonts
+        </p>
         {loading ? (
-          <div className="h-4 bg-gray-200 rounded animate-pulse w-40" />
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-200 rounded animate-pulse w-44" />
+            <div className="h-4 bg-gray-200 rounded animate-pulse w-32" />
+          </div>
         ) : result && result.fonts.length > 0 ? (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {result.fonts.map((f, i) => (
               <p key={i} className="text-sm font-mono text-gray-700">
                 {f.family}
@@ -65,10 +67,41 @@ export default function StylePreview({ result, loading }: Props) {
 
       <button
         className="w-full border border-gray-300 rounded py-3 text-sm font-mono text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
-        disabled={loading || !result}
+        disabled={loading || !hasColors}
       >
         Looks good, continue
       </button>
+    </div>
+  );
+}
+
+function SwatchRow({
+  label,
+  colors,
+  loading,
+  placeholderCount,
+}: {
+  label: string;
+  colors: string[];
+  loading: boolean;
+  placeholderCount: number;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {loading
+          ? Array.from({ length: placeholderCount }).map((_, i) => (
+              <div key={i} className="w-10 h-10 rounded bg-gray-200 animate-pulse" />
+            ))
+          : colors.length > 0
+          ? colors.map((color, i) => <ColorSwatch key={i} color={color} />)
+          : Array.from({ length: placeholderCount }).map((_, i) => (
+              <div key={i} className="w-10 h-10 rounded bg-gray-100" />
+            ))}
+      </div>
     </div>
   );
 }
@@ -77,10 +110,10 @@ function ColorSwatch({ color }: { color: string }) {
   return (
     <div className="group relative">
       <div
-        className="w-10 h-10 rounded border border-gray-200"
+        className="w-10 h-10 rounded border border-gray-200 shadow-sm"
         style={{ backgroundColor: color }}
       />
-      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none font-mono">
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none font-mono z-10">
         {color}
       </span>
     </div>

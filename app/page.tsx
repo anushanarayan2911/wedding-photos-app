@@ -10,7 +10,8 @@ interface FontResult {
 }
 
 interface ExtractResult {
-  colors: string[];
+  backgroundColors: string[];
+  textColors: string[];
   fonts: FontResult[];
   url: string;
 }
