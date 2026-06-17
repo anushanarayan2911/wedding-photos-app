@@ -6,6 +6,7 @@ export interface ExtractedStyles {
   textColors: string[];
   accentColors: string[];
   fonts: { family: string; category: string }[];
+  pageTitle: string;
   url: string;
 }
 
@@ -355,11 +356,19 @@ export async function POST(req: NextRequest) {
 
     const fonts = extractFonts(allCss);
 
+    // Best-effort page title for couple name
+    const rawTitle =
+      $('meta[property="og:title"]').attr("content") ||
+      $("title").text() ||
+      "";
+    const pageTitle = rawTitle.split(/[|\-–—]/)[0].trim();
+
     return NextResponse.json({
       backgroundColors,
       textColors,
       accentColors,
       fonts,
+      pageTitle,
       url,
     } satisfies ExtractedStyles);
   } catch (err) {

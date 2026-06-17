@@ -1,3 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { SESSION_KEY } from "@/lib/theme";
+
 interface FontResult {
   family: string;
   category: string;
@@ -8,6 +13,7 @@ interface ExtractResult {
   textColors: string[];
   accentColors: string[];
   fonts: FontResult[];
+  pageTitle: string;
   url: string;
 }
 
@@ -17,11 +23,18 @@ interface Props {
 }
 
 export default function StylePreview({ result, loading }: Props) {
+  const router = useRouter();
   const hasResult = result && (
     result.backgroundColors.length > 0 ||
     result.textColors.length > 0 ||
     result.accentColors.length > 0
   );
+
+  function handleContinue() {
+    if (!result) return;
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
+    router.push("/dashboard");
+  }
 
   return (
     <div className="border border-gray-200 rounded p-6 space-y-5">
@@ -56,7 +69,8 @@ export default function StylePreview({ result, loading }: Props) {
       </div>
 
       <button
-        className="w-full border border-gray-300 rounded py-3 text-sm font-mono text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
+        onClick={handleContinue}
+        className="w-full border border-gray-300 rounded py-3 text-sm font-mono text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         disabled={loading || !hasResult}
       >
         Looks good, continue

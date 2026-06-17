@@ -14,6 +14,7 @@ interface ExtractResult {
   textColors: string[];
   accentColors: string[];
   fonts: FontResult[];
+  pageTitle: string;
   url: string;
 }
 
