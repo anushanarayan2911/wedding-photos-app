@@ -360,7 +360,7 @@ export async function POST(req: NextRequest) {
     textColors.forEach((c) => used.add(c));
     const accentColors = topByBucket(scores, "accent", used, 3);
 
-    const fonts = extractFonts(allCss);
+    const cssFonts = extractFonts(allCss);
 
     // Collect Google Fonts stylesheet links directly from the HTML <head>
     // These have the exact family names the site actually uses — much more reliable
@@ -378,6 +378,27 @@ export async function POST(req: NextRequest) {
     while ((im = importRe.exec(allCss)) !== null) {
       if (!googleFontsLinks.includes(im[1])) googleFontsLinks.push(im[1]);
     }
+
+    // Add fonts found in GF link tags that aren't already in the CSS-declared list.
+    // These are the verified font names (e.g. "Playfair Display" loaded via <link>
+    // but never declared in any font-family CSS rule we could see).
+    const gfLinkFonts: { family: string; category: string }[] = [];
+    for (const gfLink of googleFontsLinks) {
+      const re = /family=([^&]+)/g;
+      let m2: RegExpExecArray | null;
+      while ((m2 = re.exec(gfLink)) !== null) {
+        const family = decodeURIComponent(m2[1]).split(":")[0].replace(/\+/g, " ").trim();
+        if (
+          family &&
+          isUsableFont(family) &&
+          !cssFonts.some((f) => f.family.toLowerCase() === family.toLowerCase())
+        ) {
+          gfLinkFonts.push({ family, category: categoriseFont(family) });
+        }
+      }
+    }
+    // GF-link fonts go first (verified), CSS-declared fonts follow
+    const fonts = [...gfLinkFonts, ...cssFonts].slice(0, 7);
 
     // Best-effort page title for couple name
     const rawTitle =

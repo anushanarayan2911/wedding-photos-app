@@ -63,8 +63,9 @@ function withOpacity(color: string, opacity: number): string {
 /** Parse family names out of one or more Google Fonts CSS URLs. */
 function parseFamiliesFromGfLinks(links: string[]): string[] {
   const names: string[] = [];
-  const re = /family=([^&]+)/g;
   for (const link of links) {
+    // Fresh regex per link — global regex reuses lastIndex across strings
+    const re = /family=([^&]+)/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(link)) !== null) {
       const name = decodeURIComponent(m[1]).split(":")[0].replace(/\+/g, " ").trim();
@@ -105,7 +106,7 @@ function categoriseFont(name: string): string {
   return "Sans-serif";
 }
 
-/** Build a Google Fonts URL from a list of font names (fallback when site has no GF link). */
+/** Build a Google Fonts URL from a list of font names. */
 function buildGoogleFontsUrl(fontNames: string[]): string | null {
   if (!fontNames.length) return null;
   const parts = fontNames.map((name) => {
@@ -115,27 +116,12 @@ function buildGoogleFontsUrl(fontNames: string[]): string | null {
   return `https://fonts.googleapis.com/css2?${parts.join("&")}&display=swap`;
 }
 
-// Fonts definitely on Google Fonts that we can load by name even when not in the site's GF links
-const KNOWN_GF_FONTS = new Set([
-  // Script / decorative
-  "sacramento", "great vibes", "dancing script", "pacifico", "lobster",
-  "satisfy", "allura", "tangerine", "alex brush", "pinyon script",
-  "kaushan script", "yellowtail", "marck script", "cookie", "merienda",
-  // Serif
-  "playfair display", "lora", "merriweather", "cormorant garamond",
-  "libre baskerville", "eb garamond", "crimson text", "pt serif",
-  "noto serif", "source serif pro", "spectral", "arvo", "bitter",
-  // Sans-serif
-  "open sans", "roboto", "lato", "montserrat", "poppins", "raleway",
-  "nunito", "ubuntu", "source sans pro", "pt sans", "quicksand",
-  "josefin sans", "work sans", "mulish", "karla", "barlow", "inter",
-  "dm sans", "outfit", "figtree", "plus jakarta sans", "noto sans",
-]);
-
 // ── Theme derivation ──────────────────────────────────────────────────────────
 
 export function deriveTheme(styles: ExtractedStyles): Theme {
-  const { backgroundColors, textColors, fonts, googleFontsLinks } = styles;
+  const { backgroundColors, textColors, fonts } = styles;
+  // Defensive: old session data may not have googleFontsLinks
+  const googleFontsLinks = styles.googleFontsLinks ?? [];
 
   // ── Backgrounds ──
   const sortedBg = [...backgroundColors].sort((a, b) => getLuminance(b) - getLuminance(a));
@@ -177,47 +163,37 @@ export function deriveTheme(styles: ExtractedStyles): Theme {
       f.category === category && (verified === undefined || f.verified === verified)
     );
 
-  // Heading / script: prefer verified GF fonts, then any detected font
-  const headingFontEntry =
-    pick("Serif", true) ?? pick("Display", true) ?? pick("Serif") ?? pick("Display");
-  const scriptFontEntry =
-    pick("Display", true) ?? pick("Display") ?? headingFontEntry;
+  // Build comprehensive font stacks from ALL detected fonts per category.
+  // Verified GF fonts (from googleFontsLinks) come first since they're
+  // guaranteed loadable; CSS-declared fonts follow as cascading fallbacks.
+  // The dashboard injects a separate GF link per font, so each loads
+  // independently — commercial fonts fail silently, GF fonts succeed.
+  const unique = (arr: string[]) => [...new Set(arr)];
 
-  // Body: prefer verified GF sans → known GF sans (loadable) → any sans
-  const knownGfSans = allFonts.find(
-    (f) => f.category === "Sans-serif" && KNOWN_GF_FONTS.has(f.family.toLowerCase())
-  );
-  const bodyFontEntry = pick("Sans-serif", true) ?? knownGfSans ?? pick("Sans-serif");
+  const allSerifs = unique(allFonts.filter(f => f.category === "Serif").map(f => f.family));
+  const allDisplays = unique(allFonts.filter(f => f.category === "Display").map(f => f.family));
+  const allSans = unique(allFonts.filter(f => f.category === "Sans-serif").map(f => f.family));
 
-  const headingFont = headingFontEntry
-    ? `"${headingFontEntry.family}", Georgia, serif`
+  const headingFont = allSerifs.length
+    ? allSerifs.map(f => `"${f}"`).join(", ") + ", Georgia, serif"
+    : allDisplays.length
+    ? allDisplays.map(f => `"${f}"`).join(", ") + ", cursive"
     : "Georgia, 'Times New Roman', serif";
 
-  const scriptFont = scriptFontEntry
-    ? `"${scriptFontEntry.family}", cursive`
+  const scriptFont = allDisplays.length
+    ? allDisplays.map(f => `"${f}"`).join(", ") + ", cursive"
     : headingFont;
 
-  const bodyFont = bodyFontEntry
-    ? `"${bodyFontEntry.family}", system-ui, sans-serif`
+  const bodyFont = allSans.length
+    ? allSans.map(f => `"${f}"`).join(", ") + ", system-ui, sans-serif"
+    : allSerifs.length
+    ? allSerifs.map(f => `"${f}"`).join(", ") + ", Georgia, serif"
     : "system-ui, -apple-system, sans-serif";
 
   // ── Google Fonts URL ──
-  // Build one combined URL:
-  // 1. All families from the site's own GF links (verified exact names)
-  // 2. Any Display/script fonts detected in CSS that aren't already covered
-  //    (e.g. Sacramento loaded via @import not captured in <link> tags)
-  const coveredLower = new Set(gfFamilies.map((n) => n.toLowerCase()));
-  // Add Display/script and sans-serif fonts from CSS declarations that are
-  // known to be on Google Fonts but weren't captured in the site's <link> tags
-  const extraFonts = fonts
-    .filter(
-      (f) =>
-        KNOWN_GF_FONTS.has(f.family.toLowerCase()) &&
-        !coveredLower.has(f.family.toLowerCase())
-    )
-    .map((f) => f.family);
-  const allGfNames = [...gfFamilies, ...extraFonts];
-  const googleFontsUrl = buildGoogleFontsUrl(allGfNames.length ? allGfNames : fonts.map((f) => f.family));
+  // Combined URL for verified GF fonts only (safe to combine since all are known-good).
+  // The dashboard additionally injects per-font links for CSS-declared fonts.
+  const googleFontsUrl = buildGoogleFontsUrl(gfFamilies);
 
   return {
     sidebarBg,

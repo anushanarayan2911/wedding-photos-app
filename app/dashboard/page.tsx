@@ -36,15 +36,31 @@ export default function DashboardPage() {
       const derived = deriveTheme(parsed);
 
       // Inject fonts so they start downloading immediately.
-      // display:swap means text shows instantly with fallback and swaps when ready.
-      if (derived.googleFontsUrl) {
-        const href = derived.googleFontsUrl;
-        if (!document.querySelector(`link[href="${href}"]`)) {
-          const link = document.createElement("link");
-          link.rel = "stylesheet";
-          link.href = href;
+      const injectLink = (href: string) => {
+        if (!document.head.querySelector(`link[href="${href}"]`)) {
+          const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href });
           document.head.appendChild(link);
         }
+      };
+
+      // 1. Site's own GF links verbatim (exact variant specs — guaranteed to load)
+      for (const href of parsed.googleFontsLinks ?? []) injectLink(href);
+
+      // 2. One link per detected CSS font, each attempted independently from GF.
+      //    Fonts on GF (e.g. Sacramento, Open Sans) will load.
+      //    Commercial fonts (e.g. Gotham SSm) return 404 and are silently skipped.
+      //    The CSS font-family stacks cascade to the next available font automatically.
+      const coveredNames = new Set(
+        (parsed.googleFontsLinks ?? []).map(l => {
+          const m = l.match(/family=([^&:]+)/);
+          return m ? decodeURIComponent(m[1]).replace(/\+/g, " ").toLowerCase() : "";
+        })
+      );
+      for (const font of parsed.fonts ?? []) {
+        if (coveredNames.has(font.family.toLowerCase())) continue;
+        const n = encodeURIComponent(font.family).replace(/%20/g, "+");
+        const spec = font.category === "Display" ? n : `${n}:wght@400;700`;
+        injectLink(`https://fonts.googleapis.com/css2?family=${spec}&display=swap`);
       }
 
       setStyles(parsed);
@@ -58,6 +74,7 @@ export default function DashboardPage() {
 
   const t = theme;
   const coupleName = styles.pageTitle || "Your Wedding Board";
+  const firstFont = styles.fonts[0]?.family ?? null;
 
   return (
     <div
@@ -141,7 +158,7 @@ export default function DashboardPage() {
           <div>
             <h1
               className="text-2xl font-bold leading-tight"
-              style={{ fontFamily: t.headingFont, color: t.headingColor }}
+              style={{ fontFamily: firstFont ? `"${firstFont}", serif` : t.headingFont, color: t.headingColor }}
             >
               Couple Dashboard
             </h1>
