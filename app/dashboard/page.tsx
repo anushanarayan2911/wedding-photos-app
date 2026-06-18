@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { deriveTheme, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
 
 const NAV_ITEMS = [
@@ -18,36 +19,45 @@ const STATS = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [theme, setTheme] = useState<Theme | null>(null);
   const [styles, setStyles] = useState<ExtractedStyles | null>(null);
+
+  function handleReset() {
+    sessionStorage.removeItem(SESSION_KEY);
+    router.push("/");
+  }
 
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return;
-    const parsed: ExtractedStyles = JSON.parse(raw);
-    setStyles(parsed);
-    setTheme(deriveTheme(parsed));
+    try {
+      const parsed: ExtractedStyles = JSON.parse(raw);
+      const derived = deriveTheme(parsed);
+
+      // Inject fonts so they start downloading immediately.
+      // display:swap means text shows instantly with fallback and swaps when ready.
+      if (derived.googleFontsUrl) {
+        const href = derived.googleFontsUrl;
+        if (!document.querySelector(`link[href="${href}"]`)) {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = href;
+          document.head.appendChild(link);
+        }
+      }
+
+      setStyles(parsed);
+      setTheme(derived);
+    } catch {
+      // sessionStorage data was malformed — show nothing
+    }
   }, []);
 
-  // Load Google Fonts dynamically
-  useEffect(() => {
-    if (!theme?.googleFontsUrl) return;
-    const existing = document.querySelector(`link[data-memoboard-fonts]`);
-    if (existing) existing.remove();
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = theme.googleFontsUrl;
-    link.setAttribute("data-memoboard-fonts", "1");
-    document.head.appendChild(link);
-  }, [theme?.googleFontsUrl]);
-
-  if (!theme || !styles) {
-    return <LoadingScreen />;
-  }
-
-  const coupleName = styles.pageTitle || "Your Wedding Board";
+  if (!theme || !styles) return <LoadingScreen />;
 
   const t = theme;
+  const coupleName = styles.pageTitle || "Your Wedding Board";
 
   return (
     <div
@@ -56,15 +66,20 @@ export default function DashboardPage() {
     >
       {/* ── Sidebar ── */}
       <aside
-        className="w-56 flex-shrink-0 flex flex-col border-r"
-        style={{ backgroundColor: t.sidebarBg, borderColor: t.borderColor }}
+        className="w-56 flex-shrink-0 flex flex-col"
+        style={{
+          backgroundColor: t.sidebarBg,
+          borderRight: `1px solid ${t.borderColor}`,
+          // Prominent left accent bar — makes brand colour unmistakably visible
+          borderLeft: `4px solid ${t.headingColor}`,
+        }}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-5 border-b" style={{ borderColor: t.borderColor }}>
-          <div
-            className="w-6 h-6 border-2 flex-shrink-0"
-            style={{ borderColor: t.headingColor }}
-          />
+        <div
+          className="flex items-center gap-2.5 px-4 py-5"
+          style={{ borderBottom: `1px solid ${t.borderColor}` }}
+        >
+          <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: t.headingColor }} />
           <span
             className="text-xs font-bold tracking-widest uppercase"
             style={{ fontFamily: t.bodyFont, color: t.headingColor }}
@@ -74,33 +89,54 @@ export default function DashboardPage() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-6 px-4 space-y-1">
+        <nav className="flex-1 py-5 px-3 space-y-0.5">
           {NAV_ITEMS.map(({ label, active }) => (
             <button
               key={label}
-              className="w-full flex items-center gap-3 px-2 py-2 rounded text-sm text-left transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors"
               style={
                 active
-                  ? { color: t.activeNavColor, fontWeight: 700 }
-                  : { color: t.bodyColor, opacity: 0.7 }
+                  ? {
+                      color: t.activeNavColor,
+                      fontWeight: 700,
+                      fontFamily: t.bodyFont,
+                      backgroundColor: t.accentBg,
+                    }
+                  : {
+                      color: t.bodyColor,
+                      opacity: 0.65,
+                      fontFamily: t.bodyFont,
+                    }
               }
             >
               <span
-                className="w-4 h-4 border flex-shrink-0"
+                className="w-3.5 h-3.5 border flex-shrink-0"
                 style={{ borderColor: active ? t.activeNavColor : t.borderColor }}
               />
               {label}
             </button>
           ))}
         </nav>
+
+        {/* Reset */}
+        <div className="px-3 pb-5" style={{ borderTop: `1px solid ${t.borderColor}`, paddingTop: "12px" }}>
+          <button
+            onClick={handleReset}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
+            style={{ color: t.bodyColor, opacity: 0.5, fontFamily: t.bodyFont }}
+          >
+            <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
+            Connect new site
+          </button>
+        </div>
       </aside>
 
-      {/* ── Main content ── */}
+      {/* ── Main ── */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
+        {/* Header */}
         <div
-          className="flex items-start justify-between px-8 py-6 border-b"
-          style={{ borderColor: t.borderColor }}
+          className="flex items-start justify-between px-8 py-6"
+          style={{ borderBottom: `1px solid ${t.borderColor}` }}
         >
           <div>
             <h1
@@ -109,20 +145,23 @@ export default function DashboardPage() {
             >
               Couple Dashboard
             </h1>
+            {/* Script font here is the most dramatic font demo */}
             <p
-              className="text-sm mt-1"
-              style={{ fontFamily: t.scriptFont, color: t.bodyColor, opacity: 0.75 }}
+              className="mt-1 text-base"
+              style={{ fontFamily: t.scriptFont, color: t.mutedColor }}
             >
               {coupleName}
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
+
+          <div className="flex items-center gap-3 flex-shrink-0 mt-1">
             <button
-              className="px-4 py-2 text-sm border rounded"
+              className="px-4 py-2 text-sm rounded"
               style={{
-                borderColor: t.primaryBtnBg,
+                border: `1.5px solid ${t.primaryBtnBg}`,
                 color: t.primaryBtnBg,
                 fontFamily: t.bodyFont,
+                backgroundColor: "transparent",
               }}
             >
               Share Board Link
@@ -140,15 +179,20 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Content area */}
+        {/* Content */}
         <div className="flex-1 px-8 py-8 space-y-8">
-          {/* Stat cards */}
+          {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
             {STATS.map(({ label, value }) => (
               <div
                 key={label}
                 className="rounded border px-6 py-5"
-                style={{ backgroundColor: t.cardBg, borderColor: t.borderColor }}
+                style={{
+                  backgroundColor: t.cardBg,
+                  borderColor: t.borderColor,
+                  // Top accent line — brand colour on every card
+                  borderTop: `3px solid ${t.headingColor}`,
+                }}
               >
                 <p
                   className="text-xs uppercase tracking-widest mb-2"

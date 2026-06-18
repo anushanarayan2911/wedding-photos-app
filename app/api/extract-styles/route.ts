@@ -6,6 +6,7 @@ export interface ExtractedStyles {
   textColors: string[];
   accentColors: string[];
   fonts: { family: string; category: string }[];
+  googleFontsLinks: string[];
   pageTitle: string;
   url: string;
 }
@@ -229,20 +230,25 @@ function isUsableFont(name: string): boolean {
 
 function categoriseFont(name: string): string {
   const lower = name.toLowerCase();
-  const serif = [
-    "serif", "times", "georgia", "garamond", "baskerville", "palatino",
-    "playfair", "cormorant", "crimson", "merriweather", "lora",
-    "libre baskerville", "bodoni", "caslon", "didot", "trajan", "eb garamond",
-  ];
-  const mono = ["mono", "code", "courier", "consolas", "fira", "source code", "roboto mono", "inconsolata"];
-  const display = [
-    "display", "headline", "poster", "abril", "lobster", "pacifico",
-    "dancing", "great vibes", "sacramento", "satisfy", "allura", "alex brush",
-    "pinyon", "mr dafoe", "rouge script", "tangerine", "italianno",
-  ];
-  if (display.some((d) => lower.includes(d))) return "Display";
+  const mono = ["mono", "code", "courier", "consolas", "fira", "source code", "inconsolata"];
   if (mono.some((d) => lower.includes(d))) return "Monospace";
+  // Serif checked before script so "Playfair Display" → Serif, not Script
+  const serif = [
+    "playfair", "cormorant", "garamond", "baskerville", "palatino",
+    "times", "georgia", "crimson", "merriweather", "lora",
+    "libre baskerville", "bodoni", "caslon", "didot", "trajan",
+    "eb garamond", "noto serif", "pt serif", "source serif",
+    "spectral", "neuton", "arvo", "bitter", "abril fatface",
+  ];
   if (serif.some((d) => lower.includes(d))) return "Serif";
+  // Script/decorative matched by specific names only — not the word "display"
+  const script = [
+    "sacramento", "great vibes", "dancing script", "pacifico", "lobster",
+    "satisfy", "allura", "alex brush", "pinyon script", "mr dafoe",
+    "rouge script", "tangerine", "italianno", "kaushan", "yellowtail",
+    "marck script", "petit formal", "cookie", "merienda",
+  ];
+  if (script.some((d) => lower.includes(d))) return "Display";
   return "Sans-serif";
 }
 
@@ -356,6 +362,23 @@ export async function POST(req: NextRequest) {
 
     const fonts = extractFonts(allCss);
 
+    // Collect Google Fonts stylesheet links directly from the HTML <head>
+    // These have the exact family names the site actually uses — much more reliable
+    // than reconstructing URLs from CSS declarations.
+    const googleFontsLinks: string[] = [];
+    $('link[rel="stylesheet"]').each((_, el) => {
+      const href = $(el).attr("href") ?? "";
+      if (href.includes("fonts.googleapis.com") && !googleFontsLinks.includes(href)) {
+        googleFontsLinks.push(href);
+      }
+    });
+    // Also pick up @import rules that reference Google Fonts
+    const importRe = /url\(['"]?(https:\/\/fonts\.googleapis\.com[^'")]+)['"]?\)/gi;
+    let im: RegExpExecArray | null;
+    while ((im = importRe.exec(allCss)) !== null) {
+      if (!googleFontsLinks.includes(im[1])) googleFontsLinks.push(im[1]);
+    }
+
     // Best-effort page title for couple name
     const rawTitle =
       $('meta[property="og:title"]').attr("content") ||
@@ -368,6 +391,7 @@ export async function POST(req: NextRequest) {
       textColors,
       accentColors,
       fonts,
+      googleFontsLinks,
       pageTitle,
       url,
     } satisfies ExtractedStyles);
