@@ -2,6 +2,8 @@ export interface ElementStyle {
   selector: string;
   fontFamily?: string;
   color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
   fontSize?: string;
   fontWeight?: string;
 }
@@ -57,11 +59,11 @@ function getLuminance(color: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function isLight(color: string): boolean {
+export function isLight(color: string): boolean {
   return getLuminance(color) > 0.5;
 }
 
-function withOpacity(color: string, opacity: number): string {
+export function withOpacity(color: string, opacity: number): string {
   const rgb = colorToRgb(color);
   if (!rgb) return color;
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;

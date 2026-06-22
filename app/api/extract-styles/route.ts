@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 
 export interface ElementStyle {
-  selector: string;          // e.g. "h1", "h2", "p"
-  fontFamily?: string;       // first font family name, cleaned
-  color?: string;            // text colour
-  fontSize?: string;         // e.g. "2rem", "24px"
-  fontWeight?: string;       // e.g. "700", "bold"
+  selector: string;
+  fontFamily?: string;
+  color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  fontSize?: string;
+  fontWeight?: string;
 }
 
 export interface ExtractedStyles {
@@ -165,7 +167,11 @@ function isGarbageValue(value: string): boolean {
 
 // ── Element-level style extraction ───────────────────────────────────────────
 
-const ELEMENT_SELECTORS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "body", "a", "li"];
+const ELEMENT_SELECTORS = [
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "p", "body", "a", "li",
+  "header", "nav", "section", "article", "footer", "button",
+];
 
 function selectorTargetsElement(selector: string, el: string): boolean {
   return selector.split(",").map(s => s.trim()).some(part => {
@@ -208,11 +214,49 @@ function applyDeclarations(
     if (parsed.weight) entry.fontWeight = parsed.weight;
   }
 
-  // color — resolve rgb(var(--N)) patterns; Wix stores color vars as bare "r,g,b"
+  // color
   const rawColor = getPropValue(resolved, "color");
   if (rawColor && !isGarbageValue(rawColor)) {
     const lower = rawColor.toLowerCase();
     if (!isNoiseColor(lower)) entry.color = lower;
+  }
+
+  // background-color (explicit)
+  const bgColor = getPropValue(resolved, "background-color");
+  if (bgColor && !isGarbageValue(bgColor)) {
+    const lower = bgColor.toLowerCase();
+    if (!isNoiseColor(lower)) entry.backgroundColor = lower;
+  }
+
+  // background shorthand — extract plain color token, skip gradients and images
+  if (!entry.backgroundColor) {
+    const bg = getPropValue(resolved, "background");
+    if (bg && !isGarbageValue(bg) && !bg.toLowerCase().includes("gradient") && !bg.includes("url(")) {
+      const cm = bg.match(/#[0-9a-f]{3,8}\b|rgba?\s*\([^)]+\)|hsla?\s*\([^)]+\)/i);
+      if (cm) {
+        const c = cm[0].toLowerCase();
+        if (!isNoiseColor(c)) entry.backgroundColor = c;
+      }
+    }
+  }
+
+  // border-color (explicit)
+  const borderCol = getPropValue(resolved, "border-color");
+  if (borderCol && !isGarbageValue(borderCol)) {
+    const lower = borderCol.toLowerCase();
+    if (!isNoiseColor(lower)) entry.borderColor = lower;
+  }
+
+  // border shorthand — extract color token
+  if (!entry.borderColor) {
+    const border = getPropValue(resolved, "border");
+    if (border && !isGarbageValue(border) && border.toLowerCase() !== "none") {
+      const cm = border.match(/#[0-9a-f]{3,8}\b|rgba?\s*\([^)]+\)|hsla?\s*\([^)]+\)/i);
+      if (cm) {
+        const c = cm[0].toLowerCase();
+        if (!isNoiseColor(c)) entry.borderColor = c;
+      }
+    }
   }
 
   // font-size (overrides shorthand value)
@@ -254,7 +298,7 @@ function extractElementStyles(
     }
   }
 
-  for (const el of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+  for (const el of ["h1", "h2", "h3", "h4", "h5", "h6", "header", "nav", "section", "article", "footer", "button"]) {
     const domEl = $(el).first();
     if (!domEl.length) continue;
     const entry = map.get(el) ?? { selector: el };
@@ -277,7 +321,7 @@ function extractElementStyles(
   return ELEMENT_SELECTORS
     .filter(el => {
       const e = map.get(el);
-      return e && (e.fontFamily || e.color || e.fontSize);
+      return e && (e.fontFamily || e.color || e.backgroundColor || e.borderColor || e.fontSize);
     })
     .map(el => map.get(el)!);
 }

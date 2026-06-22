@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deriveTheme, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
+import { deriveTheme, withOpacity, isLight, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
 
 const NAV_ITEMS = [
   { label: "Overview", active: true },
@@ -110,41 +110,80 @@ export default function DashboardPage() {
   const h3Font = toStack(detectedH3);
   const h4Font = toStack(detectedH4);
 
-  const h1Color      = h1El?.color ?? t.headingColor;
+  // UI / structural elements
+  const headerEl = elStyles.find(e => e.selector === "header");
+  const navEl    = elStyles.find(e => e.selector === "nav");
+  const sectionEl = elStyles.find(e => e.selector === "section");
+  const articleEl = elStyles.find(e => e.selector === "article");
+  const buttonEl  = elStyles.find(e => e.selector === "button");
+  const aEl       = elStyles.find(e => e.selector === "a");
+  const bodyEl    = elStyles.find(e => e.selector === "body");
+
+  // Text colours — cascade through heading levels then body
+  const detectedBodyColor = pEl?.color ?? bodyEl?.color;
+  const detectedH1Color   = h1El?.color ?? detectedBodyColor;
+  const detectedH2Color   = h2El?.color ?? detectedH1Color;
+  const detectedH3Color   = h3El?.color ?? detectedH2Color;
+  const detectedH4Color   = h4El?.color ?? detectedBodyColor;
+
+  const bodyColor = detectedBodyColor ?? t.bodyColor;
+  const h1Color   = detectedH1Color   ?? t.headingColor;
+  const h2Color   = detectedH2Color   ?? t.headingColor;
+  const h3Color   = detectedH3Color   ?? t.headingColor;
+  const h4Color   = detectedH4Color   ?? t.mutedColor;
+
+  // Background colours — matched by structural HTML tag
+  const pageBg    = bodyEl?.backgroundColor ?? "#ffffff";
+  const sidebarBg = headerEl?.backgroundColor ?? navEl?.backgroundColor ?? t.sidebarBg;
+  const cardBg    = sectionEl?.backgroundColor ?? articleEl?.backgroundColor ?? pageBg;
+
+  // Border colour — look for it on structural elements, fall back to theme
+  const borderColor = (
+    sectionEl?.borderColor ??
+    articleEl?.borderColor ??
+    headerEl?.borderColor ??
+    navEl?.borderColor ??
+    t.borderColor
+  );
+
+  // Button / interactive colours
+  const primaryBtnBg   = buttonEl?.backgroundColor ?? aEl?.color ?? h1Color;
+  const primaryBtnText = buttonEl?.color ?? (isLight(primaryBtnBg) ? "#1c1c1c" : "#ffffff");
+  const activeNavColor = aEl?.color ?? h1Color;
+
+  // Derived secondary colours
+  const accentBg   = withOpacity(primaryBtnBg, 0.08);
+  const mutedColor = withOpacity(bodyColor, 0.5);
+
   const h1FontWeight = h1El?.fontWeight ?? "700";
-  const h2Color      = h2El?.color ?? t.headingColor;
   const h2FontWeight = h2El?.fontWeight ?? "700";
-  const h3Color      = h3El?.color ?? t.headingColor;
   const h3FontWeight = h3El?.fontWeight ?? "700";
-  const h4Color      = h4El?.color ?? t.mutedColor;
   const h4FontWeight = h4El?.fontWeight ?? "600";
-  const bodyColor    = pEl?.color ?? t.bodyColor;
   const bodyFontWeight = pEl?.fontWeight;
 
   return (
     <div
       className="flex min-h-screen"
-      style={{ backgroundColor: t.pageBg, fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight }}
+      style={{ backgroundColor: pageBg, fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight }}
     >
       {/* ── Sidebar ── */}
       <aside
         className="w-56 flex-shrink-0 flex flex-col"
         style={{
-          backgroundColor: t.sidebarBg,
-          borderRight: `1px solid ${t.borderColor}`,
-          // Prominent left accent bar — makes brand colour unmistakably visible
-          borderLeft: `4px solid ${t.headingColor}`,
+          backgroundColor: sidebarBg,
+          borderRight: `1px solid ${borderColor}`,
+          borderLeft: `4px solid ${h1Color}`,
         }}
       >
         {/* Logo */}
         <div
           className="flex items-center gap-2.5 px-4 py-5"
-          style={{ borderBottom: `1px solid ${t.borderColor}` }}
+          style={{ borderBottom: `1px solid ${borderColor}` }}
         >
-          <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: t.headingColor }} />
+          <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: h1Color }} />
           <span
             className="text-xs font-bold tracking-widest uppercase"
-            style={{ color: t.headingColor }}
+            style={{ color: h1Color }}
           >
             Memoboard
           </span>
@@ -159,19 +198,19 @@ export default function DashboardPage() {
               style={
                 active
                   ? {
-                      color: t.activeNavColor,
+                      color: activeNavColor,
                       fontWeight: 700,
-                      backgroundColor: t.accentBg,
+                      backgroundColor: accentBg,
                     }
                   : {
-                      color: t.bodyColor,
+                      color: bodyColor,
                       opacity: 0.65,
                     }
               }
             >
               <span
                 className="w-3.5 h-3.5 border flex-shrink-0"
-                style={{ borderColor: active ? t.activeNavColor : t.borderColor }}
+                style={{ borderColor: active ? activeNavColor : borderColor }}
               />
               {label}
             </button>
@@ -179,11 +218,11 @@ export default function DashboardPage() {
         </nav>
 
         {/* Reset */}
-        <div className="px-3 pb-5" style={{ borderTop: `1px solid ${t.borderColor}`, paddingTop: "12px" }}>
+        <div className="px-3 pb-5" style={{ borderTop: `1px solid ${borderColor}`, paddingTop: "12px" }}>
           <button
             onClick={handleReset}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
-            style={{ color: t.bodyColor, opacity: 0.5 }}
+            style={{ color: bodyColor, opacity: 0.5 }}
           >
             <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
             Connect new site
@@ -196,7 +235,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div
           className="flex items-start justify-between px-8 py-6"
-          style={{ borderBottom: `1px solid ${t.borderColor}` }}
+          style={{ borderBottom: `1px solid ${borderColor}` }}
         >
           <div>
             <h1
@@ -208,7 +247,7 @@ export default function DashboardPage() {
             {/* Script font here is the most dramatic font demo */}
             <p
               className="mt-1 text-base"
-              style={{ color: t.mutedColor }}
+              style={{ color: mutedColor }}
             >
               {coupleName}
             </p>
@@ -218,8 +257,8 @@ export default function DashboardPage() {
             <button
               className="px-4 py-2 text-sm rounded"
               style={{
-                border: `1.5px solid ${t.primaryBtnBg}`,
-                color: t.primaryBtnBg,
+                border: `1.5px solid ${primaryBtnBg}`,
+                color: primaryBtnBg,
                 backgroundColor: "transparent",
               }}
             >
@@ -228,8 +267,8 @@ export default function DashboardPage() {
             <button
               className="px-4 py-2 text-sm rounded"
               style={{
-                backgroundColor: t.primaryBtnBg,
-                color: t.primaryBtnText,
+                backgroundColor: primaryBtnBg,
+                color: primaryBtnText,
               }}
             >
               Download All
@@ -253,9 +292,9 @@ export default function DashboardPage() {
                   key={label}
                   className="rounded border px-6 py-5"
                   style={{
-                    backgroundColor: t.cardBg,
-                    borderColor: t.borderColor,
-                    borderTop: `3px solid ${t.headingColor}`,
+                    backgroundColor: cardBg,
+                    borderColor: borderColor,
+                    borderTop: `3px solid ${h1Color}`,
                   }}
                 >
                   <h4
@@ -285,7 +324,7 @@ export default function DashboardPage() {
             </h2>
             <div className="grid grid-cols-4 gap-3">
               {Array.from({ length: 8 }).map((_, i) => (
-                <PhotoPlaceholder key={i} borderColor={t.borderColor} />
+                <PhotoPlaceholder key={i} borderColor={borderColor} />
               ))}
             </div>
           </div>

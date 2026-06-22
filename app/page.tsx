@@ -13,6 +13,8 @@ interface ElementStyle {
   selector: string;
   fontFamily?: string;
   color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
   fontSize?: string;
   fontWeight?: string;
 }
