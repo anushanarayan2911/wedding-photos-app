@@ -115,17 +115,61 @@ function parseCssRules(css: string): CssRule[] {
   return rules;
 }
 
+// ── CSS variable resolution ───────────────────────────────────────────────────
+
+function buildCssVarMap(css: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const re = /(--[\w-]+)\s*:\s*([^;{}]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const name = m[1].trim();
+    const value = m[2].trim();
+    if (!map.has(name)) map.set(name, value);
+  }
+  return map;
+}
+
+function resolveVars(value: string, varMap: Map<string, string>, depth = 0): string {
+  if (depth > 4) return value;
+  return value.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\s*\)/g, (_, name, fallback) => {
+    const resolved = varMap.get(name.trim());
+    if (resolved) return resolveVars(resolved.trim(), varMap, depth + 1);
+    return fallback?.trim() ?? "";
+  });
+}
+
+// Parse CSS font shorthand: [style] [variant] [weight] size[/line-height] family
+function parseFontShorthand(value: string): { family?: string; size?: string; weight?: string } {
+  const sizeRe = /\b(\d[\d.]*(?:px|rem|em|vw|vh|pt|%))\s*(?:\/[\S]+)?\s+(.+)$/i;
+  const sizeMatch = value.match(sizeRe);
+  const size = sizeMatch?.[1];
+  const familyRaw = sizeMatch?.[2]?.replace(/['"]/g, "").split(",")[0].trim();
+  const family = familyRaw && isUsableFont(familyRaw) ? familyRaw : undefined;
+  const weightMatch = value.match(/\b(100|200|300|400|500|600|700|800|900|bold|bolder|lighter|normal)\b/i);
+  const weight = weightMatch?.[1];
+  return { family, size, weight };
+}
+
+function isGarbageValue(value: string): boolean {
+  const lower = value.toLowerCase().trim();
+  return (
+    lower.includes("var(") ||
+    lower === "inherit" ||
+    lower === "currentcolor" ||
+    lower === "initial" ||
+    lower === "unset" ||
+    lower === "revert" ||
+    lower === ""
+  );
+}
+
 // ── Element-level style extraction ───────────────────────────────────────────
 
-// Semantic HTML elements whose typography we want to capture
 const ELEMENT_SELECTORS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "body", "a", "li"];
 
 function selectorTargetsElement(selector: string, el: string): boolean {
-  // Each comma-separated part is checked independently
   return selector.split(",").map(s => s.trim()).some(part => {
-    // The "target" is the last token in a descendant/child chain
     const lastToken = (part.split(/[\s>+~]+/).pop() ?? "").toLowerCase();
-    // Match bare element, or element with pseudo/class/attribute suffix
     return (
       lastToken === el ||
       lastToken.startsWith(`${el}.`) ||
@@ -141,39 +185,101 @@ function getPropValue(declarations: string, prop: string): string | undefined {
   return declarations.match(re)?.[1]?.trim();
 }
 
-function extractElementStyles(rules: CssRule[]): ElementStyle[] {
+function applyDeclarations(
+  declarations: string,
+  entry: ElementStyle,
+  varMap: Map<string, string>
+): void {
+  const resolved = resolveVars(declarations, varMap);
+
+  // font-family (explicit)
+  const rawFamily = getPropValue(resolved, "font-family");
+  if (rawFamily && !isGarbageValue(rawFamily)) {
+    const clean = rawFamily.replace(/['"]/g, "").split(",")[0].trim();
+    if (clean && isUsableFont(clean)) entry.fontFamily = clean;
+  }
+
+  // font shorthand — parses family, size, weight in one declaration
+  const fontShorthand = getPropValue(resolved, "font");
+  if (fontShorthand && !isGarbageValue(fontShorthand)) {
+    const parsed = parseFontShorthand(fontShorthand);
+    if (parsed.family && !entry.fontFamily) entry.fontFamily = parsed.family;
+    if (parsed.size) entry.fontSize = parsed.size;
+    if (parsed.weight) entry.fontWeight = parsed.weight;
+  }
+
+  // color — resolve rgb(var(--N)) patterns; Wix stores color vars as bare "r,g,b"
+  const rawColor = getPropValue(resolved, "color");
+  if (rawColor && !isGarbageValue(rawColor)) {
+    const lower = rawColor.toLowerCase();
+    if (!isNoiseColor(lower)) entry.color = lower;
+  }
+
+  // font-size (overrides shorthand value)
+  const fontSize = getPropValue(resolved, "font-size");
+  if (fontSize && !isGarbageValue(fontSize)) entry.fontSize = fontSize;
+
+  // font-weight (overrides shorthand value)
+  const fontWeight = getPropValue(resolved, "font-weight");
+  if (fontWeight && !isGarbageValue(fontWeight)) entry.fontWeight = fontWeight;
+}
+
+function extractElementStyles(
+  rules: CssRule[],
+  $: ReturnType<typeof import("cheerio").load>,
+  varMap: Map<string, string>
+): ElementStyle[] {
   const map = new Map<string, ElementStyle>();
 
+  // Pass 1: CSS rules that directly target semantic elements
   for (const { selector, declarations } of rules) {
     const normSel = selector.toLowerCase().replace(/\s+/g, " ");
-
     for (const el of ELEMENT_SELECTORS) {
       if (!selectorTargetsElement(normSel, el)) continue;
-
       const entry = map.get(el) ?? { selector: el };
-
-      const rawFamily = getPropValue(declarations, "font-family");
-      if (rawFamily) {
-        const clean = rawFamily.replace(/['"]/g, "").split(",")[0].trim();
-        if (clean && isUsableFont(clean)) entry.fontFamily = clean;
-      }
-
-      const rawColor = getPropValue(declarations, "color");
-      if (rawColor && !isNoiseColor(rawColor.toLowerCase())) {
-        entry.color = rawColor.toLowerCase();
-      }
-
-      const fontSize = getPropValue(declarations, "font-size");
-      if (fontSize) entry.fontSize = fontSize;
-
-      const fontWeight = getPropValue(declarations, "font-weight");
-      if (fontWeight) entry.fontWeight = fontWeight;
-
+      applyDeclarations(declarations, entry, varMap);
       map.set(el, entry);
     }
   }
 
-  return ELEMENT_SELECTORS.filter(el => map.has(el)).map(el => map.get(el)!);
+  // Pass 2: DOM-based extraction — match CSS classes used on heading elements
+  // (catches Wix/Squarespace patterns where font styling lives in a .font_N class)
+  const classRules = new Map<string, CssRule[]>();
+  for (const rule of rules) {
+    const clsMatches = rule.selector.match(/\.([a-zA-Z_-][\w_-]*)/g) ?? [];
+    for (const cls of clsMatches) {
+      const name = cls.slice(1);
+      if (!classRules.has(name)) classRules.set(name, []);
+      classRules.get(name)!.push(rule);
+    }
+  }
+
+  for (const el of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
+    const domEl = $(el).first();
+    if (!domEl.length) continue;
+    const entry = map.get(el) ?? { selector: el };
+
+    // Apply styles from each CSS class the element carries
+    const classes = (domEl.attr("class") ?? "").split(/\s+/).filter(Boolean);
+    for (const cls of classes) {
+      for (const rule of classRules.get(cls) ?? []) {
+        applyDeclarations(rule.declarations, entry, varMap);
+      }
+    }
+
+    // Inline styles take highest priority — applied last so they override
+    const inlineStyle = domEl.attr("style") ?? "";
+    if (inlineStyle) applyDeclarations(inlineStyle, entry, varMap);
+
+    if (entry.fontFamily || entry.color || entry.fontSize) map.set(el, entry);
+  }
+
+  return ELEMENT_SELECTORS
+    .filter(el => {
+      const e = map.get(el);
+      return e && (e.fontFamily || e.color || e.fontSize);
+    })
+    .map(el => map.get(el)!);
 }
 
 function getDeclarationValue(declarations: string, property: string): string[] {
@@ -405,6 +511,7 @@ export async function POST(req: NextRequest) {
 
     const allCss = cssChunks.join("\n");
     const rules = parseCssRules(allCss);
+    const varMap = buildCssVarMap(allCss);
     const scores = scoreColors(rules);
 
     // Boost CSS variable colors declared in :root/html/body as brand tokens
@@ -430,7 +537,7 @@ export async function POST(req: NextRequest) {
     textColors.forEach((c) => used.add(c));
     const accentColors = topByBucket(scores, "accent", used, 3);
 
-    const elementStyles = extractElementStyles(rules);
+    const elementStyles = extractElementStyles(rules, $, varMap);
     const cssFonts = extractFonts(allCss);
 
     // Collect Google Fonts stylesheet links directly from the HTML <head>

@@ -86,12 +86,16 @@ export default function DashboardPage() {
 
   const h1Font = h1El?.fontFamily ? `"${h1El.fontFamily}", ${t.headingFont}` : (firstFont ? `"${firstFont}", ${t.headingFont}` : t.headingFont);
   const h1Color = h1El?.color ?? t.headingColor;
+  const h1FontWeight = h1El?.fontWeight ?? "700";
   const h2Font = h2El?.fontFamily ? `"${h2El.fontFamily}", ${t.headingFont}` : t.headingFont;
   const h2Color = h2El?.color ?? t.headingColor;
+  const h2FontWeight = h2El?.fontWeight ?? "700";
   const h3Font = h3El?.fontFamily ? `"${h3El.fontFamily}", ${t.headingFont}` : t.headingFont;
   const h3Color = h3El?.color ?? t.headingColor;
+  const h3FontWeight = h3El?.fontWeight ?? "700";
   const h4Font = h4El?.fontFamily ? `"${h4El.fontFamily}", ${t.bodyFont}` : t.bodyFont;
   const h4Color = h4El?.color ?? t.mutedColor;
+  const h4FontWeight = h4El?.fontWeight ?? "600";
   const bodyFontResolved = pEl?.fontFamily ? `"${pEl.fontFamily}", ${t.bodyFont}` : t.bodyFont;
 
   return (
@@ -175,8 +179,8 @@ export default function DashboardPage() {
         >
           <div>
             <h1
-              className="text-2xl font-bold leading-tight"
-              style={{ fontFamily: h1Font, color: h1Color }}
+              className="text-2xl leading-tight"
+              style={{ fontFamily: h1Font, color: h1Color, fontWeight: h1FontWeight }}
             >
               Couple Dashboard
             </h1>
@@ -219,8 +223,8 @@ export default function DashboardPage() {
           {/* Stats */}
           <div>
             <h2
-              className="text-sm font-bold uppercase tracking-widest mb-4"
-              style={{ fontFamily: h2Font, color: h2Color }}
+              className="text-sm uppercase tracking-widest mb-4"
+              style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
             >
               At a Glance
             </h2>
@@ -237,13 +241,13 @@ export default function DashboardPage() {
                 >
                   <h4
                     className="text-xs uppercase tracking-widest mb-2"
-                    style={{ color: h4Color, fontFamily: h4Font }}
+                    style={{ color: h4Color, fontFamily: h4Font, fontWeight: h4FontWeight }}
                   >
                     {label}
                   </h4>
                   <h3
-                    className="text-3xl font-bold"
-                    style={{ fontFamily: h3Font, color: h3Color }}
+                    className="text-3xl leading-none"
+                    style={{ fontFamily: h3Font, color: h3Color, fontWeight: h3FontWeight }}
                   >
                     {value}
                   </h3>
@@ -255,8 +259,8 @@ export default function DashboardPage() {
           {/* Recent uploads */}
           <div>
             <h2
-              className="text-base font-bold mb-4"
-              style={{ fontFamily: h2Font, color: h2Color }}
+              className="text-base mb-4"
+              style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
             >
               Recent Uploads
             </h2>
