@@ -80,12 +80,18 @@ export default function DashboardPage() {
   const elStyles = styles.elementStyles ?? [];
   const h1El = elStyles.find(e => e.selector === "h1");
   const h2El = elStyles.find(e => e.selector === "h2");
+  const h3El = elStyles.find(e => e.selector === "h3");
+  const h4El = elStyles.find(e => e.selector === "h4");
   const pEl = elStyles.find(e => e.selector === "p") ?? elStyles.find(e => e.selector === "body");
 
   const h1Font = h1El?.fontFamily ? `"${h1El.fontFamily}", ${t.headingFont}` : (firstFont ? `"${firstFont}", ${t.headingFont}` : t.headingFont);
   const h1Color = h1El?.color ?? t.headingColor;
   const h2Font = h2El?.fontFamily ? `"${h2El.fontFamily}", ${t.headingFont}` : t.headingFont;
   const h2Color = h2El?.color ?? t.headingColor;
+  const h3Font = h3El?.fontFamily ? `"${h3El.fontFamily}", ${t.headingFont}` : t.headingFont;
+  const h3Color = h3El?.color ?? t.headingColor;
+  const h4Font = h4El?.fontFamily ? `"${h4El.fontFamily}", ${t.bodyFont}` : t.bodyFont;
+  const h4Color = h4El?.color ?? t.mutedColor;
   const bodyFontResolved = pEl?.fontFamily ? `"${pEl.fontFamily}", ${t.bodyFont}` : t.bodyFont;
 
   return (
@@ -211,32 +217,39 @@ export default function DashboardPage() {
         {/* Content */}
         <div className="flex-1 px-8 py-8 space-y-8">
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
-            {STATS.map(({ label, value }) => (
-              <div
-                key={label}
-                className="rounded border px-6 py-5"
-                style={{
-                  backgroundColor: t.cardBg,
-                  borderColor: t.borderColor,
-                  // Top accent line — brand colour on every card
-                  borderTop: `3px solid ${t.headingColor}`,
-                }}
-              >
-                <p
-                  className="text-xs uppercase tracking-widest mb-2"
-                  style={{ color: t.mutedColor, fontFamily: t.bodyFont }}
+          <div>
+            <h2
+              className="text-sm font-bold uppercase tracking-widest mb-4"
+              style={{ fontFamily: h2Font, color: h2Color }}
+            >
+              At a Glance
+            </h2>
+            <div className="grid grid-cols-3 gap-4">
+              {STATS.map(({ label, value }) => (
+                <div
+                  key={label}
+                  className="rounded border px-6 py-5"
+                  style={{
+                    backgroundColor: t.cardBg,
+                    borderColor: t.borderColor,
+                    borderTop: `3px solid ${t.headingColor}`,
+                  }}
                 >
-                  {label}
-                </p>
-                <p
-                  className="text-3xl font-bold"
-                  style={{ fontFamily: t.headingFont, color: t.headingColor }}
-                >
-                  {value}
-                </p>
-              </div>
-            ))}
+                  <h4
+                    className="text-xs uppercase tracking-widest mb-2"
+                    style={{ color: h4Color, fontFamily: h4Font }}
+                  >
+                    {label}
+                  </h4>
+                  <h3
+                    className="text-3xl font-bold"
+                    style={{ fontFamily: h3Font, color: h3Color }}
+                  >
+                    {value}
+                  </h3>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Recent uploads */}
