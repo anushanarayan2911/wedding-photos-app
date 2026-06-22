@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 
+export interface ElementStyle {
+  selector: string;          // e.g. "h1", "h2", "p"
+  fontFamily?: string;       // first font family name, cleaned
+  color?: string;            // text colour
+  fontSize?: string;         // e.g. "2rem", "24px"
+  fontWeight?: string;       // e.g. "700", "bold"
+}
+
 export interface ExtractedStyles {
   backgroundColors: string[];
   textColors: string[];
   accentColors: string[];
   fonts: { family: string; category: string }[];
   googleFontsLinks: string[];
+  elementStyles: ElementStyle[];
   pageTitle: string;
   url: string;
 }
@@ -104,6 +113,67 @@ function parseCssRules(css: string): CssRule[] {
     rules.push({ selector, declarations: m[2] });
   }
   return rules;
+}
+
+// ── Element-level style extraction ───────────────────────────────────────────
+
+// Semantic HTML elements whose typography we want to capture
+const ELEMENT_SELECTORS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "body", "a", "li"];
+
+function selectorTargetsElement(selector: string, el: string): boolean {
+  // Each comma-separated part is checked independently
+  return selector.split(",").map(s => s.trim()).some(part => {
+    // The "target" is the last token in a descendant/child chain
+    const lastToken = (part.split(/[\s>+~]+/).pop() ?? "").toLowerCase();
+    // Match bare element, or element with pseudo/class/attribute suffix
+    return (
+      lastToken === el ||
+      lastToken.startsWith(`${el}.`) ||
+      lastToken.startsWith(`${el}:`) ||
+      lastToken.startsWith(`${el}[`) ||
+      lastToken.startsWith(`${el}#`)
+    );
+  });
+}
+
+function getPropValue(declarations: string, prop: string): string | undefined {
+  const re = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;!]+)`, "i");
+  return declarations.match(re)?.[1]?.trim();
+}
+
+function extractElementStyles(rules: CssRule[]): ElementStyle[] {
+  const map = new Map<string, ElementStyle>();
+
+  for (const { selector, declarations } of rules) {
+    const normSel = selector.toLowerCase().replace(/\s+/g, " ");
+
+    for (const el of ELEMENT_SELECTORS) {
+      if (!selectorTargetsElement(normSel, el)) continue;
+
+      const entry = map.get(el) ?? { selector: el };
+
+      const rawFamily = getPropValue(declarations, "font-family");
+      if (rawFamily) {
+        const clean = rawFamily.replace(/['"]/g, "").split(",")[0].trim();
+        if (clean && isUsableFont(clean)) entry.fontFamily = clean;
+      }
+
+      const rawColor = getPropValue(declarations, "color");
+      if (rawColor && !isNoiseColor(rawColor.toLowerCase())) {
+        entry.color = rawColor.toLowerCase();
+      }
+
+      const fontSize = getPropValue(declarations, "font-size");
+      if (fontSize) entry.fontSize = fontSize;
+
+      const fontWeight = getPropValue(declarations, "font-weight");
+      if (fontWeight) entry.fontWeight = fontWeight;
+
+      map.set(el, entry);
+    }
+  }
+
+  return ELEMENT_SELECTORS.filter(el => map.has(el)).map(el => map.get(el)!);
 }
 
 function getDeclarationValue(declarations: string, property: string): string[] {
@@ -360,6 +430,7 @@ export async function POST(req: NextRequest) {
     textColors.forEach((c) => used.add(c));
     const accentColors = topByBucket(scores, "accent", used, 3);
 
+    const elementStyles = extractElementStyles(rules);
     const cssFonts = extractFonts(allCss);
 
     // Collect Google Fonts stylesheet links directly from the HTML <head>
@@ -413,6 +484,7 @@ export async function POST(req: NextRequest) {
       accentColors,
       fonts,
       googleFontsLinks,
+      elementStyles,
       pageTitle,
       url,
     } satisfies ExtractedStyles);

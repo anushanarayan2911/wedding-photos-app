@@ -9,12 +9,21 @@ interface FontResult {
   category: string;
 }
 
+interface ElementStyle {
+  selector: string;
+  fontFamily?: string;
+  color?: string;
+  fontSize?: string;
+  fontWeight?: string;
+}
+
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
   accentColors: string[];
   fonts: FontResult[];
   googleFontsLinks: string[];
+  elementStyles: ElementStyle[];
   pageTitle: string;
   url: string;
 }

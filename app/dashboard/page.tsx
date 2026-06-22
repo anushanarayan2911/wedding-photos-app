@@ -76,10 +76,22 @@ export default function DashboardPage() {
   const coupleName = styles.pageTitle || "Your Wedding Board";
   const firstFont = styles.fonts[0]?.family ?? null;
 
+  // Element-level styles for precise heading/body theming
+  const elStyles = styles.elementStyles ?? [];
+  const h1El = elStyles.find(e => e.selector === "h1");
+  const h2El = elStyles.find(e => e.selector === "h2");
+  const pEl = elStyles.find(e => e.selector === "p") ?? elStyles.find(e => e.selector === "body");
+
+  const h1Font = h1El?.fontFamily ? `"${h1El.fontFamily}", ${t.headingFont}` : (firstFont ? `"${firstFont}", ${t.headingFont}` : t.headingFont);
+  const h1Color = h1El?.color ?? t.headingColor;
+  const h2Font = h2El?.fontFamily ? `"${h2El.fontFamily}", ${t.headingFont}` : t.headingFont;
+  const h2Color = h2El?.color ?? t.headingColor;
+  const bodyFontResolved = pEl?.fontFamily ? `"${pEl.fontFamily}", ${t.bodyFont}` : t.bodyFont;
+
   return (
     <div
       className="flex min-h-screen"
-      style={{ backgroundColor: t.pageBg, fontFamily: t.bodyFont, color: t.bodyColor }}
+      style={{ backgroundColor: t.pageBg, fontFamily: bodyFontResolved, color: t.bodyColor }}
     >
       {/* ── Sidebar ── */}
       <aside
@@ -158,7 +170,7 @@ export default function DashboardPage() {
           <div>
             <h1
               className="text-2xl font-bold leading-tight"
-              style={{ fontFamily: firstFont ? `"${firstFont}", serif` : t.headingFont, color: t.headingColor }}
+              style={{ fontFamily: h1Font, color: h1Color }}
             >
               Couple Dashboard
             </h1>
@@ -231,7 +243,7 @@ export default function DashboardPage() {
           <div>
             <h2
               className="text-base font-bold mb-4"
-              style={{ fontFamily: t.headingFont, color: t.headingColor }}
+              style={{ fontFamily: h2Font, color: h2Color }}
             >
               Recent Uploads
             </h2>

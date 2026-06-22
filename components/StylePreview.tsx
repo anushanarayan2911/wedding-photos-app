@@ -8,12 +8,21 @@ interface FontResult {
   category: string;
 }
 
+interface ElementStyle {
+  selector: string;
+  fontFamily?: string;
+  color?: string;
+  fontSize?: string;
+  fontWeight?: string;
+}
+
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
   accentColors: string[];
   fonts: FontResult[];
   googleFontsLinks: string[];
+  elementStyles: ElementStyle[];
   pageTitle: string;
   url: string;
 }
@@ -66,6 +75,50 @@ export default function StylePreview({ result, loading }: Props) {
           </div>
         ) : (
           <p className="text-sm font-mono text-gray-400">No fonts detected</p>
+        )}
+      </div>
+
+      {/* Typography (element-level styles) */}
+      <div className="border border-gray-200 rounded px-4 py-3">
+        <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Typography</p>
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-4 bg-gray-200 rounded animate-pulse" style={{ width: `${60 + i * 10}%` }} />
+            ))}
+          </div>
+        ) : result && result.elementStyles?.length > 0 ? (
+          <div className="space-y-2">
+            {result.elementStyles.map((el, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-xs font-mono font-bold text-gray-500 w-8 flex-shrink-0 uppercase">
+                  {el.selector}
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {el.fontFamily && (
+                    <span className="text-xs font-mono text-gray-700">{el.fontFamily}</span>
+                  )}
+                  {el.fontSize && (
+                    <span className="text-xs font-mono text-gray-400">{el.fontSize}</span>
+                  )}
+                  {el.fontWeight && (
+                    <span className="text-xs font-mono text-gray-400">{el.fontWeight}</span>
+                  )}
+                  {el.color && (
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block w-3 h-3 rounded-sm border border-gray-200 flex-shrink-0"
+                        style={{ backgroundColor: el.color }}
+                      />
+                      <span className="text-xs font-mono text-gray-400">{el.color}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-mono text-gray-400">No element styles detected</p>
         )}
       </div>
 

@@ -1,9 +1,18 @@
+export interface ElementStyle {
+  selector: string;
+  fontFamily?: string;
+  color?: string;
+  fontSize?: string;
+  fontWeight?: string;
+}
+
 export interface ExtractedStyles {
   backgroundColors: string[];
   textColors: string[];
   accentColors: string[];
   fonts: { family: string; category: string }[];
   googleFontsLinks: string[];
+  elementStyles: ElementStyle[];
   pageTitle: string;
   url: string;
 }
