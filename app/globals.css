@@ -10,3 +10,7 @@ body {
   color: var(--foreground);
   font-family: Georgia, "Times New Roman", serif;
 }
+
+button, input, select, textarea {
+  font: inherit;
+}

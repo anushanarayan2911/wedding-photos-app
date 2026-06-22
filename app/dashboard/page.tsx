@@ -61,6 +61,17 @@ export default function DashboardPage() {
         const n = encodeURIComponent(font.family).replace(/%20/g, "+");
         const spec = font.category === "Display" ? n : `${n}:wght@400;700`;
         injectLink(`https://fonts.googleapis.com/css2?family=${spec}&display=swap`);
+        coveredNames.add(font.family.toLowerCase());
+      }
+
+      // 3. Fonts discovered via element-level CSS variable resolution (e.g. Wix --font_N vars)
+      //    may not appear in parsed.fonts — inject them separately.
+      for (const el of parsed.elementStyles ?? []) {
+        if (!el.fontFamily) continue;
+        if (coveredNames.has(el.fontFamily.toLowerCase())) continue;
+        const n = encodeURIComponent(el.fontFamily).replace(/%20/g, "+");
+        injectLink(`https://fonts.googleapis.com/css2?family=${n}:wght@400;700&display=swap`);
+        coveredNames.add(el.fontFamily.toLowerCase());
       }
 
       setStyles(parsed);
@@ -74,34 +85,46 @@ export default function DashboardPage() {
 
   const t = theme;
   const coupleName = styles.pageTitle || "Your Wedding Board";
-  const firstFont = styles.fonts[0]?.family ?? null;
 
-  // Element-level styles for precise heading/body theming
+  // Direct font mapping: each HTML tag gets the font the wedding site uses for that tag.
+  // Cascade: if a level has no detected font, fall up to the next detected ancestor.
   const elStyles = styles.elementStyles ?? [];
   const h1El = elStyles.find(e => e.selector === "h1");
   const h2El = elStyles.find(e => e.selector === "h2");
   const h3El = elStyles.find(e => e.selector === "h3");
   const h4El = elStyles.find(e => e.selector === "h4");
-  const pEl = elStyles.find(e => e.selector === "p") ?? elStyles.find(e => e.selector === "body");
+  const pEl  = elStyles.find(e => e.selector === "p") ?? elStyles.find(e => e.selector === "body");
 
-  const h1Font = h1El?.fontFamily ? `"${h1El.fontFamily}", ${t.headingFont}` : (firstFont ? `"${firstFont}", ${t.headingFont}` : t.headingFont);
-  const h1Color = h1El?.color ?? t.headingColor;
+  const toStack = (family: string | undefined) =>
+    family ? `"${family}", sans-serif` : "system-ui, sans-serif";
+
+  const detectedBody = pEl?.fontFamily;
+  const detectedH1   = h1El?.fontFamily ?? detectedBody;
+  const detectedH2   = h2El?.fontFamily ?? detectedH1;
+  const detectedH3   = h3El?.fontFamily ?? detectedH2;
+  const detectedH4   = h4El?.fontFamily ?? detectedBody;
+
+  const bodyFontResolved = toStack(detectedBody);
+  const h1Font = toStack(detectedH1);
+  const h2Font = toStack(detectedH2);
+  const h3Font = toStack(detectedH3);
+  const h4Font = toStack(detectedH4);
+
+  const h1Color      = h1El?.color ?? t.headingColor;
   const h1FontWeight = h1El?.fontWeight ?? "700";
-  const h2Font = h2El?.fontFamily ? `"${h2El.fontFamily}", ${t.headingFont}` : t.headingFont;
-  const h2Color = h2El?.color ?? t.headingColor;
+  const h2Color      = h2El?.color ?? t.headingColor;
   const h2FontWeight = h2El?.fontWeight ?? "700";
-  const h3Font = h3El?.fontFamily ? `"${h3El.fontFamily}", ${t.headingFont}` : t.headingFont;
-  const h3Color = h3El?.color ?? t.headingColor;
+  const h3Color      = h3El?.color ?? t.headingColor;
   const h3FontWeight = h3El?.fontWeight ?? "700";
-  const h4Font = h4El?.fontFamily ? `"${h4El.fontFamily}", ${t.bodyFont}` : t.bodyFont;
-  const h4Color = h4El?.color ?? t.mutedColor;
+  const h4Color      = h4El?.color ?? t.mutedColor;
   const h4FontWeight = h4El?.fontWeight ?? "600";
-  const bodyFontResolved = pEl?.fontFamily ? `"${pEl.fontFamily}", ${t.bodyFont}` : t.bodyFont;
+  const bodyColor    = pEl?.color ?? t.bodyColor;
+  const bodyFontWeight = pEl?.fontWeight;
 
   return (
     <div
       className="flex min-h-screen"
-      style={{ backgroundColor: t.pageBg, fontFamily: bodyFontResolved, color: t.bodyColor }}
+      style={{ backgroundColor: t.pageBg, fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight }}
     >
       {/* ── Sidebar ── */}
       <aside
@@ -121,7 +144,7 @@ export default function DashboardPage() {
           <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: t.headingColor }} />
           <span
             className="text-xs font-bold tracking-widest uppercase"
-            style={{ fontFamily: t.bodyFont, color: t.headingColor }}
+            style={{ color: t.headingColor }}
           >
             Memoboard
           </span>
@@ -138,13 +161,11 @@ export default function DashboardPage() {
                   ? {
                       color: t.activeNavColor,
                       fontWeight: 700,
-                      fontFamily: t.bodyFont,
                       backgroundColor: t.accentBg,
                     }
                   : {
                       color: t.bodyColor,
                       opacity: 0.65,
-                      fontFamily: t.bodyFont,
                     }
               }
             >
@@ -162,7 +183,7 @@ export default function DashboardPage() {
           <button
             onClick={handleReset}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
-            style={{ color: t.bodyColor, opacity: 0.5, fontFamily: t.bodyFont }}
+            style={{ color: t.bodyColor, opacity: 0.5 }}
           >
             <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
             Connect new site
@@ -187,7 +208,7 @@ export default function DashboardPage() {
             {/* Script font here is the most dramatic font demo */}
             <p
               className="mt-1 text-base"
-              style={{ fontFamily: t.scriptFont, color: t.mutedColor }}
+              style={{ color: t.mutedColor }}
             >
               {coupleName}
             </p>
@@ -199,7 +220,6 @@ export default function DashboardPage() {
               style={{
                 border: `1.5px solid ${t.primaryBtnBg}`,
                 color: t.primaryBtnBg,
-                fontFamily: t.bodyFont,
                 backgroundColor: "transparent",
               }}
             >
@@ -210,7 +230,6 @@ export default function DashboardPage() {
               style={{
                 backgroundColor: t.primaryBtnBg,
                 color: t.primaryBtnText,
-                fontFamily: t.bodyFont,
               }}
             >
               Download All
