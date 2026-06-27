@@ -76,6 +76,25 @@ export default function DashboardPage() {
       // 1. Site's own GF links verbatim (exact variant specs — guaranteed to load)
       for (const href of parsed.googleFontsLinks ?? []) injectLink(href);
 
+      // Build a per-family weight set from elementStyles so we can request the
+      // exact weights used by the site (e.g. 300, 600) rather than always 400;700.
+      // If the site uses weight 300 and we only load 400;700, the browser picks 400
+      // which renders heavier than the original — this fixes that mismatch.
+      const familyWeights = new Map<string, Set<string>>();
+      for (const el of parsed.elementStyles ?? []) {
+        if (!el.fontFamily) continue;
+        const key = el.fontFamily.toLowerCase();
+        if (!familyWeights.has(key)) familyWeights.set(key, new Set());
+        if (el.fontWeight && /^\d{3}$/.test(el.fontWeight)) {
+          familyWeights.get(key)!.add(el.fontWeight);
+        }
+      }
+      const weightSpec = (familyLower: string) => {
+        const ws = familyWeights.get(familyLower) ?? new Set<string>();
+        const all = new Set(["400", "700", ...ws]);
+        return [...all].sort((a, b) => parseInt(a) - parseInt(b)).join(";");
+      };
+
       // 2. One link per detected CSS font, each attempted independently from GF.
       //    Fonts on GF (e.g. Sacramento, Open Sans) will load.
       //    Commercial fonts (e.g. Gotham SSm) return 404 and are silently skipped.
@@ -89,18 +108,18 @@ export default function DashboardPage() {
       for (const font of parsed.fonts ?? []) {
         if (coveredNames.has(font.family.toLowerCase())) continue;
         const n = encodeURIComponent(font.family).replace(/%20/g, "+");
-        const spec = font.category === "Display" ? n : `${n}:wght@400;700`;
+        const spec = font.category === "Display" ? n : `${n}:wght@${weightSpec(font.family.toLowerCase())}`;
         injectLink(`https://fonts.googleapis.com/css2?family=${spec}&display=swap`);
         coveredNames.add(font.family.toLowerCase());
       }
 
       // 3. Fonts discovered via element-level CSS variable resolution (e.g. Wix --font_N vars)
-      //    may not appear in parsed.fonts — inject them separately.
+      //    may not appear in parsed.fonts — inject them separately with their actual weights.
       for (const el of parsed.elementStyles ?? []) {
         if (!el.fontFamily) continue;
         if (coveredNames.has(el.fontFamily.toLowerCase())) continue;
         const n = encodeURIComponent(el.fontFamily).replace(/%20/g, "+");
-        injectLink(`https://fonts.googleapis.com/css2?family=${n}:wght@400;700&display=swap`);
+        injectLink(`https://fonts.googleapis.com/css2?family=${n}:wght@${weightSpec(el.fontFamily.toLowerCase())}&display=swap`);
         coveredNames.add(el.fontFamily.toLowerCase());
       }
 
@@ -129,10 +148,10 @@ export default function DashboardPage() {
     family ? `"${family}", sans-serif` : "system-ui, sans-serif";
 
   const detectedBody = pEl?.fontFamily;
-  const detectedH1   = h1El?.fontFamily ?? detectedBody;
+  const detectedH1   = h1El?.fontFamily ?? h2El?.fontFamily ?? detectedBody;
   const detectedH2   = h2El?.fontFamily ?? detectedH1;
   const detectedH3   = h3El?.fontFamily ?? detectedH2;
-  const detectedH4   = h4El?.fontFamily ?? detectedBody;
+  const detectedH4   = h4El?.fontFamily ?? detectedH3 ?? detectedBody;
 
   const bodyFontResolved = toStack(detectedBody);
   const h1Font = toStack(detectedH1);
@@ -171,7 +190,7 @@ export default function DashboardPage() {
 
   // ── Text colours — WCAG AA (4.5:1) against white ────────────────────────────
   const bodyColor = pickText(pEl?.color ?? bodyEl?.color, mainBg, textColors);
-  const h1Color   = pickText(h1El?.color, mainBg, textColors);
+  const h1Color   = pickText(h1El?.color ?? h2El?.color, mainBg, textColors);
   const h2Color   = pickText(h2El?.color ?? h1El?.color, mainBg, [h1Color, ...textColors]);
   const h3Color   = pickText(h3El?.color ?? h2El?.color, mainBg, [h2Color, h1Color, ...textColors]);
   const h4Color   = pickText(h4El?.color ?? pEl?.color, mainBg, textColors);
@@ -194,10 +213,10 @@ export default function DashboardPage() {
   const activeNavColor = pickUi(aEl?.color ?? primaryBtnBg, sidebarBg, [primaryBtnBg, ...navTextPool]);
   const navAccentBg   = withOpacity(navColor, 0.15);
 
-  const h1FontWeight = h1El?.fontWeight ?? "700";
-  const h2FontWeight = h2El?.fontWeight ?? "700";
-  const h3FontWeight = h3El?.fontWeight ?? "700";
-  const h4FontWeight = h4El?.fontWeight ?? "600";
+  const h1FontWeight = h1El?.fontWeight ?? h2El?.fontWeight ?? "700";
+  const h2FontWeight = h2El?.fontWeight ?? h1El?.fontWeight ?? "700";
+  const h3FontWeight = h3El?.fontWeight ?? h2El?.fontWeight ?? "700";
+  const h4FontWeight = h4El?.fontWeight ?? h3El?.fontWeight ?? pEl?.fontWeight ?? "600";
   const bodyFontWeight = pEl?.fontWeight;
 
   return (

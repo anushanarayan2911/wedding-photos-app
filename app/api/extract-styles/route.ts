@@ -147,8 +147,23 @@ function parseFontShorthand(value: string): { family?: string; size?: string; we
   const size = sizeMatch?.[1];
   const familyRaw = sizeMatch?.[2]?.replace(/['"]/g, "").split(",")[0].trim();
   const family = familyRaw && isUsableFont(familyRaw) ? familyRaw : undefined;
-  const weightMatch = value.match(/\b(100|200|300|400|500|600|700|800|900|bold|bolder|lighter|normal)\b/i);
-  const weight = weightMatch?.[1];
+  // Font shorthand format: [style] [variant] [weight] <size>[/lh] <family>
+  // Search for the weight only in the portion BEFORE the font-size so we
+  // don't confuse "normal" used for style/variant with the weight token.
+  // Numeric weights (100-900) and bold/bolder/lighter are unambiguous.
+  // "normal" is intentionally excluded — it appears for style and variant
+  // too and renders as weight 400 which the browser applies by default.
+  const beforeSize = sizeMatch
+    ? value.slice(0, value.indexOf(sizeMatch[0])).trim()
+    : "";
+  const numericWeight = beforeSize.match(/\b(100|200|300|400|500|600|700|800|900)\b/);
+  const keywordWeight = beforeSize.match(/\b(bold|bolder|lighter)\b/i);
+  // If no unambiguous weight found but "normal" appears, treat it as weight 400.
+  // Covers shorthand patterns like "normal normal normal 14px Arial" used by
+  // some site builders where all three slots (style/variant/weight) are reset.
+  const normalWeight = (!numericWeight && !keywordWeight && /\bnormal\b/i.test(beforeSize))
+    ? "normal" : undefined;
+  const weight = numericWeight?.[1] ?? keywordWeight?.[1] ?? normalWeight;
   return { family, size, weight };
 }
 
@@ -315,13 +330,13 @@ function extractElementStyles(
     const inlineStyle = domEl.attr("style") ?? "";
     if (inlineStyle) applyDeclarations(inlineStyle, entry, varMap);
 
-    if (entry.fontFamily || entry.color || entry.fontSize) map.set(el, entry);
+    if (entry.fontFamily || entry.color || entry.fontSize || entry.fontWeight) map.set(el, entry);
   }
 
   return ELEMENT_SELECTORS
     .filter(el => {
       const e = map.get(el);
-      return e && (e.fontFamily || e.color || e.backgroundColor || e.borderColor || e.fontSize);
+      return e && (e.fontFamily || e.color || e.backgroundColor || e.borderColor || e.fontSize || e.fontWeight);
     })
     .map(el => map.get(el)!);
 }
