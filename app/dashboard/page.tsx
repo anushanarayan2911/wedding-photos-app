@@ -2,7 +2,37 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { deriveTheme, withOpacity, isLight, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
+import { deriveTheme, withOpacity, isLight, getLuminance, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
+
+// ── Accessibility helpers ─────────────────────────────────────────────────────
+
+/** WCAG 2.1 contrast ratio between two colours. */
+function contrastRatio(fg: string, bg: string): number {
+  const l1 = getLuminance(fg) + 0.05;
+  const l2 = getLuminance(bg) + 0.05;
+  return Math.max(l1, l2) / Math.min(l1, l2);
+}
+
+/**
+ * Returns `hint` if it meets 4.5:1 contrast against `bg`.
+ * Otherwise walks `pool` and returns the first that does.
+ * Falls back to pure black or white based on bg luminance.
+ */
+function pickText(hint: string | undefined, bg: string, pool: string[]): string {
+  if (hint && contrastRatio(hint, bg) >= 4.5) return hint;
+  const found = pool.find(c => contrastRatio(c, bg) >= 4.5);
+  return found ?? (isLight(bg) ? "#1c1c1c" : "#f5f5f5");
+}
+
+/**
+ * Returns `hint` if it meets 3:1 contrast (UI / large text).
+ * Falls back through pool then to a safe absolute.
+ */
+function pickUi(hint: string | undefined, bg: string, pool: string[]): string {
+  if (hint && contrastRatio(hint, bg) >= 3) return hint;
+  const found = pool.find(c => contrastRatio(c, bg) >= 3);
+  return found ?? (isLight(bg) ? "#1c1c1c" : "#f5f5f5");
+}
 
 const NAV_ITEMS = [
   { label: "Overview", active: true },
@@ -111,49 +141,79 @@ export default function DashboardPage() {
   const h4Font = toStack(detectedH4);
 
   // UI / structural elements
-  const headerEl = elStyles.find(e => e.selector === "header");
-  const navEl    = elStyles.find(e => e.selector === "nav");
+  const headerEl  = elStyles.find(e => e.selector === "header");
+  const navEl     = elStyles.find(e => e.selector === "nav");
   const sectionEl = elStyles.find(e => e.selector === "section");
   const articleEl = elStyles.find(e => e.selector === "article");
   const buttonEl  = elStyles.find(e => e.selector === "button");
   const aEl       = elStyles.find(e => e.selector === "a");
   const bodyEl    = elStyles.find(e => e.selector === "body");
 
-  // Text colours — cascade through heading levels then body
-  const detectedBodyColor = pEl?.color ?? bodyEl?.color;
-  const detectedH1Color   = h1El?.color ?? detectedBodyColor;
-  const detectedH2Color   = h2El?.color ?? detectedH1Color;
-  const detectedH3Color   = h3El?.color ?? detectedH2Color;
-  const detectedH4Color   = h4El?.color ?? detectedBodyColor;
+  const { backgroundColors, textColors, accentColors } = styles;
 
-  const bodyColor = detectedBodyColor ?? t.bodyColor;
-  const h1Color   = detectedH1Color   ?? t.headingColor;
-  const h2Color   = detectedH2Color   ?? t.headingColor;
-  const h3Color   = detectedH3Color   ?? t.headingColor;
-  const h4Color   = detectedH4Color   ?? t.mutedColor;
+  // Sort backgrounds lightest-first so surface assignment is deterministic.
+  // backgroundColors from the API is sorted by score (prominence), not luminance.
+  const bgsByLuminance = [...backgroundColors].sort((a, b) => getLuminance(b) - getLuminance(a));
 
-  // Background colours — matched by structural HTML tag
-  const pageBg    = bodyEl?.backgroundColor ?? "#ffffff";
-  const sidebarBg = headerEl?.backgroundColor ?? navEl?.backgroundColor ?? t.sidebarBg;
-  const cardBg    = sectionEl?.backgroundColor ?? articleEl?.backgroundColor ?? pageBg;
+  // ── Backgrounds ─────────────────────────────────────────────────────────────
+  // pageBg: always the lightest surface — content must be readable on it.
+  // Accept element hint only when it's genuinely light; otherwise use the
+  // luminance-sorted pool so a dark brand colour never becomes the page bg.
+  const bodyBgHint = bodyEl?.backgroundColor;
+  const pageBg = (bodyBgHint && isLight(bodyBgHint))
+    ? bodyBgHint
+    : bgsByLuminance[0] ?? "#ffffff";
 
-  // Border colour — look for it on structural elements, fall back to theme
-  const borderColor = (
-    sectionEl?.borderColor ??
-    articleEl?.borderColor ??
-    headerEl?.borderColor ??
-    navEl?.borderColor ??
-    t.borderColor
-  );
+  // sidebarBg: distinct from pageBg to delineate the nav area.
+  // Use header/nav bg only when luminance differs meaningfully (> 0.04).
+  const sidebarHint = headerEl?.backgroundColor ?? navEl?.backgroundColor;
+  const sidebarBg = (sidebarHint && Math.abs(getLuminance(sidebarHint) - getLuminance(pageBg)) > 0.04)
+    ? sidebarHint
+    : bgsByLuminance[1] ?? bgsByLuminance[0] ?? pageBg;
 
-  // Button / interactive colours
-  const primaryBtnBg   = buttonEl?.backgroundColor ?? aEl?.color ?? h1Color;
-  const primaryBtnText = buttonEl?.color ?? (isLight(primaryBtnBg) ? "#1c1c1c" : "#ffffff");
-  const activeNavColor = aEl?.color ?? h1Color;
+  // cardBg: light container; fall back to pageBg (not hard-coded white) so text
+  // colours computed for pageBg are guaranteed to work here too.
+  const cardHint = sectionEl?.backgroundColor ?? articleEl?.backgroundColor;
+  const cardBg = (cardHint && isLight(cardHint)) ? cardHint : pageBg;
 
-  // Derived secondary colours
-  const accentBg   = withOpacity(primaryBtnBg, 0.08);
-  const mutedColor = withOpacity(bodyColor, 0.5);
+  // borderColor: should be subtle — low contrast with page surface, not a strong tone.
+  // Prefer detected border, otherwise synthesise a 12%-opacity overlay.
+  const borderHint = sectionEl?.borderColor ?? articleEl?.borderColor
+    ?? headerEl?.borderColor ?? navEl?.borderColor;
+  const borderColor = borderHint ?? withOpacity(isLight(pageBg) ? "#000000" : "#ffffff", 0.12);
+
+  // ── Text colours (WCAG AA: 4.5:1 against the surface they sit on) ───────────
+  // Each heading level cascades to the next if no colour detected for that level.
+  // pickText verifies contrast and walks the textColors pool as fallback.
+  const bodyColor = pickText(pEl?.color ?? bodyEl?.color, pageBg, textColors);
+  const h1Color   = pickText(h1El?.color, pageBg, textColors);
+  const h2Color   = pickText(h2El?.color ?? h1El?.color, pageBg, [h1Color, ...textColors]);
+  const h3Color   = pickText(h3El?.color ?? h2El?.color, pageBg, [h2Color, h1Color, ...textColors]);
+  const h4Color   = pickText(h4El?.color ?? pEl?.color, pageBg, textColors);
+
+  // mutedColor: 60% opacity of body text — lighter weight without losing legibility
+  const mutedColor = withOpacity(bodyColor, 0.6);
+
+  // ── Interactive / accent colours ─────────────────────────────────────────────
+  // primaryBtnBg: brand accent colour. Use in priority order:
+  //   detected button bg → accent palette (UI-classified colours) → link colour → h1 colour.
+  // Button text is always computed for 4.5:1 contrast — never taken from element styles.
+  const primaryBtnBg =
+    buttonEl?.backgroundColor
+    ?? accentColors[0]
+    ?? aEl?.color
+    ?? h1Color;
+  const primaryBtnText = contrastRatio(primaryBtnBg, "#ffffff") >= 4.5 ? "#ffffff" : "#1c1c1c";
+
+  // ── Navigation colours (contrast against sidebarBg, not pageBg) ──────────────
+  // pickText / pickUi use the sidebar surface as background.
+  const navTextPool = [bodyColor, h1Color, ...textColors];
+  const navColor      = pickText(navEl?.color ?? aEl?.color, sidebarBg, navTextPool);
+  const activeNavColor = pickUi(aEl?.color ?? primaryBtnBg, sidebarBg, [primaryBtnBg, ...navTextPool]);
+
+  // Active-item highlight: subtle tint of the active colour on the sidebar surface
+  const accentBg    = withOpacity(activeNavColor, 0.12);
+  const navAccentBg = accentBg;
 
   const h1FontWeight = h1El?.fontWeight ?? "700";
   const h2FontWeight = h2El?.fontWeight ?? "700";
@@ -200,10 +260,10 @@ export default function DashboardPage() {
                   ? {
                       color: activeNavColor,
                       fontWeight: 700,
-                      backgroundColor: accentBg,
+                      backgroundColor: navAccentBg,
                     }
                   : {
-                      color: bodyColor,
+                      color: navColor,
                       opacity: 0.65,
                     }
               }

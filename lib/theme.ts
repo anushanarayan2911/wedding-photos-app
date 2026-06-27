@@ -49,7 +49,7 @@ function colorToRgb(color: string): [number, number, number] | null {
   return null;
 }
 
-function getLuminance(color: string): number {
+export function getLuminance(color: string): number {
   const rgb = colorToRgb(color);
   if (!rgb) return 0.5;
   const [r, g, b] = rgb.map((c) => {
