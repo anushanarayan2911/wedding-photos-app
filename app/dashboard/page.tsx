@@ -233,7 +233,6 @@ export default function DashboardPage() {
       className="flex h-screen overflow-hidden"
       style={{
         ...(mainBg ? { backgroundColor: mainBg } : {}),
-        ...(heroImg ? { backgroundImage: `url(${heroImg.url})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" } : {}),
         fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight,
       }}
     >
@@ -318,7 +317,7 @@ export default function DashboardPage() {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Header */}
         <div
-          className="relative overflow-hidden flex items-center justify-between px-8 py-10"
+          className="sticky top-0 z-10 relative overflow-hidden flex items-center justify-between px-8 py-10"
           style={{ borderBottom: `1px solid ${borderColor}`, backgroundColor: contrastBg }}
         >
           {/* Decorative corner element — mirrors how wedding sites use botanical
@@ -373,7 +372,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 px-8 py-8 space-y-8" style={heroImg ? undefined : (mainBg ? { backgroundColor: mainBg } : undefined)}>
+        <div
+          className="flex-1 px-8 py-8 space-y-8"
+          style={heroImg
+            ? { backgroundImage: `url(${heroImg.url})`, backgroundSize: "cover", backgroundPosition: "center top" }
+            : (mainBg ? { backgroundColor: mainBg } : undefined)
+          }
+        >
           {/* Stats */}
           <div className="relative">
             {/* Decorative corner motif — mirrors botanical corner frames common on wedding sites */}
