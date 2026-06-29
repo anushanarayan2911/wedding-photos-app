@@ -1,6 +1,6 @@
 export default function NavBar() {
   return (
-    <nav className="border-b border-gray-200 px-8 py-4 flex items-center justify-between">
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
       {/* Logo */}
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 border-2 border-gray-900 rounded-sm" />

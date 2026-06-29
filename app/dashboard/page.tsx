@@ -221,12 +221,12 @@ export default function DashboardPage() {
 
   return (
     <div
-      className="flex min-h-screen"
+      className="flex h-screen overflow-hidden"
       style={{ backgroundColor: mainBg, fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight }}
     >
       {/* ── Sidebar ── */}
       <aside
-        className="w-56 flex-shrink-0 flex flex-col"
+        className="w-56 flex-shrink-0 flex flex-col h-screen"
         style={{
           backgroundColor: sidebarBg,
           borderRight: `1px solid ${withOpacity(navColor, 0.2)}`,
@@ -288,7 +288,7 @@ export default function DashboardPage() {
       </aside>
 
       {/* ── Main ── */}
-      <main className="flex-1 flex flex-col min-w-0" style={{ backgroundColor: mainBg }}>
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto" style={{ backgroundColor: mainBg }}>
         {/* Header */}
         <div
           className="flex items-start justify-between px-8 py-6"
