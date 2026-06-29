@@ -544,6 +544,14 @@ function extractKeyImages(
     scored.push({ url: absolute, alt: alt || undefined, context, score });
   }
 
+  // First <img> in document order — user-designated primary image
+  $("img").each((_, el) => {
+    const src = $(el).attr("src") ?? $(el).attr("data-src") ?? $(el).attr("data-lazy-src");
+    if (!src) return;
+    add(src, $(el).attr("alt") ?? undefined, "first", 200);
+    return false; // break after first match
+  });
+
   // og:image / twitter:image — most reliable signal
   const ogImage = $('meta[property="og:image"]').attr("content");
   if (ogImage) add(ogImage, undefined, "featured", 100);

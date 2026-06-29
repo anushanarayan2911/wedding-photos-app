@@ -170,30 +170,39 @@ export default function DashboardPage() {
 
   const { backgroundColors, textColors, accentColors } = styles;
 
-  // ── Backgrounds ─────────────────────────────────────────────────────────────
-  // Main content is always white — predictable surface for all text and cards.
-  const mainBg  = "#ffffff";
-  const cardBg  = "#ffffff";
+  // ── Images (computed early so mainBg can depend on heroImg) ──────────────────
+  const keyImages = styles.keyImages ?? [];
+  const heroImg = keyImages.find(img => img.context === "first")
+    ?? keyImages.find(img => img.context === "featured" || img.context === "hero")
+    ?? keyImages.find(img => img.context === "background");
+  const decorativeImgs = keyImages.filter(img => img.context === "decorative");
 
-  // Sidebar uses the site's primary accent colour (first entry in the
-  // accent palette, which is sourced from UI elements like buttons and links).
-  // Fall back through backgrounds sorted dark-first, then a neutral dark.
+  // ── Backgrounds ─────────────────────────────────────────────────────────────
   const bgsByLuminance = [...backgroundColors].sort((a, b) => getLuminance(b) - getLuminance(a));
+
+  // If there's a background image, don't force a colour — let the image show.
+  // Otherwise use the site's lightest extracted background colour.
+  const mainBg = heroImg ? undefined : (bgsByLuminance[0] ?? "#f8f7f4");
+
+  // Use white as the contrast reference for text when the bg is transparent.
+  const contrastBg = mainBg ?? "#ffffff";
+
+  // Sidebar uses the site's primary accent colour.
   const sidebarBg = accentColors[0]
     ?? bgsByLuminance[bgsByLuminance.length - 1]
     ?? "#1c1c1c";
 
-  // Border: subtle against white
+  // Border: subtle against the content background
   const borderHint = sectionEl?.borderColor ?? articleEl?.borderColor
     ?? headerEl?.borderColor ?? navEl?.borderColor;
   const borderColor = borderHint ?? "rgba(0,0,0,0.1)";
 
-  // ── Text colours — WCAG AA (4.5:1) against white ────────────────────────────
-  const bodyColor = pickText(pEl?.color ?? bodyEl?.color, mainBg, textColors);
-  const h1Color   = pickText(h1El?.color ?? h2El?.color, mainBg, textColors);
-  const h2Color   = pickText(h2El?.color ?? h1El?.color, mainBg, [h1Color, ...textColors]);
-  const h3Color   = pickText(h3El?.color ?? h2El?.color, mainBg, [h2Color, h1Color, ...textColors]);
-  const h4Color   = pickText(h4El?.color ?? pEl?.color, mainBg, textColors);
+  // ── Text colours — WCAG AA (4.5:1) against the content background ────────────
+  const bodyColor = pickText(pEl?.color ?? bodyEl?.color, contrastBg, textColors);
+  const h1Color   = pickText(h1El?.color ?? h2El?.color, contrastBg, textColors);
+  const h2Color   = pickText(h2El?.color ?? h1El?.color, contrastBg, [h1Color, ...textColors]);
+  const h3Color   = pickText(h3El?.color ?? h2El?.color, contrastBg, [h2Color, h1Color, ...textColors]);
+  const h4Color   = pickText(h4El?.color ?? pEl?.color, contrastBg, textColors);
 
   // mutedColor: 60% opacity of body text
   const mutedColor = withOpacity(bodyColor, 0.6);
@@ -219,15 +228,14 @@ export default function DashboardPage() {
   const h4FontWeight = h4El?.fontWeight ?? h3El?.fontWeight ?? pEl?.fontWeight ?? "600";
   const bodyFontWeight = pEl?.fontWeight;
 
-  const keyImages = styles.keyImages ?? [];
-  const heroImg = keyImages.find(img => img.context === "featured" || img.context === "hero")
-    ?? keyImages.find(img => img.context === "background");
-  const decorativeImgs = keyImages.filter(img => img.context === "decorative");
-
   return (
     <div
       className="flex h-screen overflow-hidden"
-      style={{ backgroundColor: mainBg, fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight }}
+      style={{
+        ...(mainBg ? { backgroundColor: mainBg } : {}),
+        ...(heroImg ? { backgroundImage: `url(${heroImg.url})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" } : {}),
+        fontFamily: bodyFontResolved, color: bodyColor, fontWeight: bodyFontWeight,
+      }}
     >
       {/* ── Sidebar ── */}
       <aside
@@ -307,33 +315,12 @@ export default function DashboardPage() {
       </aside>
 
       {/* ── Main ── */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto" style={{ backgroundColor: mainBg }}>
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Header */}
         <div
-          className="relative overflow-hidden flex items-start justify-between px-8 py-6"
-          style={{ borderBottom: `1px solid ${borderColor}` }}
+          className="relative overflow-hidden flex items-center justify-between px-8 py-10"
+          style={{ borderBottom: `1px solid ${borderColor}`, backgroundColor: contrastBg }}
         >
-          {/* Hero/featured image — fades in from the right, matching how wedding sites
-              place couple or venue photography as a right-side banner */}
-          {heroImg && (
-            <>
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundImage: `url(${heroImg.url})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                }}
-              />
-              <div
-                className="absolute inset-0"
-                style={{
-                  background: `linear-gradient(to right, ${mainBg} 35%, ${withOpacity(mainBg, 0.85)} 55%, ${withOpacity(mainBg, 0.1)} 100%)`,
-                }}
-              />
-            </>
-          )}
-
           {/* Decorative corner element — mirrors how wedding sites use botanical
               motifs as corner frames on headers and hero sections */}
           {decorativeImgs[1] && (
@@ -386,7 +373,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 px-8 py-8 space-y-8">
+        <div className="flex-1 px-8 py-8 space-y-8" style={heroImg ? undefined : (mainBg ? { backgroundColor: mainBg } : undefined)}>
           {/* Stats */}
           <div className="relative">
             {/* Decorative corner motif — mirrors botanical corner frames common on wedding sites */}
@@ -410,10 +397,8 @@ export default function DashboardPage() {
               {STATS.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="rounded border px-6 py-5"
+                  className="px-6 py-5"
                   style={{
-                    backgroundColor: cardBg,
-                    borderColor: borderColor,
                     borderTop: `3px solid ${h1Color}`,
                   }}
                 >
