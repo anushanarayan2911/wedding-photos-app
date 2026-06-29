@@ -411,8 +411,9 @@ export default function DashboardPage() {
               {STATS.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="px-6 py-5"
+                  className="px-6 py-5 rounded"
                   style={{
+                    backgroundColor: contrastBg,
                     borderTop: `3px solid ${h1Color}`,
                   }}
                 >
