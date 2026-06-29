@@ -524,6 +524,56 @@ function extractFonts(css: string): { family: string; category: string }[] {
 
 // ── Key image extraction ──────────────────────────────────────────────────────
 
+// ── CDN URL enhancement ───────────────────────────────────────────────────────
+// Wedding sites often serve image URLs sized for thumbnails. Rewrite to the
+// highest-quality version the CDN supports.
+
+function enhanceImageUrl(url: string): string {
+  try {
+    // Wix: maintain aspect ratio at 1920px wide (safely within typical original ~2000px)
+    if (url.includes("wixstatic.com")) {
+      const cw = parseInt(url.match(/w_(\d+)/)?.[1] ?? "800");
+      const ch = parseInt(url.match(/h_(\d+)/)?.[1] ?? "600");
+      const tw = 1920;
+      const th = Math.round(ch * tw / cw);
+      return url
+        .replace(/w_\d+/, `w_${tw}`)
+        .replace(/h_\d+/, `h_${th}`)
+        .replace(/q_\d+/, "q_95");
+    }
+    // Cloudinary: maintain aspect ratio at 1920px wide
+    if (url.includes("cloudinary.com")) {
+      const cw = parseInt(url.match(/\/w_(\d+)/)?.[1] ?? "800");
+      const ch = parseInt(url.match(/\/h_(\d+)/)?.[1] ?? "600");
+      const tw = 1920;
+      const th = Math.round(ch * tw / cw);
+      return url
+        .replace(/\/w_\d+/, `/w_${tw}`)
+        .replace(/\/h_\d+/, `/h_${th}`)
+        .replace(/\/q_\d+/, "/q_95");
+    }
+    // Squarespace CDN
+    if (url.includes("squarespace-cdn.com") || url.includes("static1.squarespace.com")) {
+      const u = new URL(url);
+      u.searchParams.set("format", "1920w");
+      return u.toString();
+    }
+    // Imgix
+    if (url.includes(".imgix.net")) {
+      const u = new URL(url);
+      u.searchParams.set("w", "1920");
+      u.searchParams.set("q", "95");
+      u.searchParams.set("auto", "format,compress");
+      return u.toString();
+    }
+    // Shopify CDN
+    if (url.includes("cdn.shopify.com")) {
+      return url.replace(/_\d+x(\.\w+)(\?|$)/, "_1920x$1$2");
+    }
+  } catch { /* leave url unchanged */ }
+  return url;
+}
+
 function extractKeyImages(
   rules: CssRule[],
   $: ReturnType<typeof import("cheerio").load>,
@@ -539,17 +589,36 @@ function extractKeyImages(
     if (/1[xX]1|pixel\.gif|tracking|beacon|\.woff|\.ttf|\.eot|\.otf/i.test(trimmed)) return;
     let absolute: string;
     try { absolute = new URL(trimmed, baseUrl).toString(); } catch { return; }
+    absolute = enhanceImageUrl(absolute);
     if (seen.has(absolute)) return;
     seen.add(absolute);
     scored.push({ url: absolute, alt: alt || undefined, context, score });
   }
 
-  // First <img> in document order — user-designated primary image
+  // First large content image in document order — skips logos, icons, tiny images.
+  // A "large" image has explicit px dimensions ≥ 400 wide, or a CDN URL indicating
+  // a large fill (wixstatic w_≥400, cloudinary w_≥400, imgix w≥400).
+  const isLargeContentImage = (src: string, el: ReturnType<typeof $>): boolean => {
+    const alt = (el.attr("alt") ?? "").toLowerCase();
+    const cls = (el.attr("class") ?? "").toLowerCase();
+    if (/logo|icon|avatar|sprite|badge/i.test(alt + " " + cls + " " + src)) return false;
+    if (/\.svg(\?|$)/i.test(src)) return false;
+    const w = parseInt(el.attr("width") ?? "0");
+    const h = parseInt(el.attr("height") ?? "0");
+    if (w >= 400 || h >= 300) return true;
+    if (/wixstatic\.com.*w_(\d+)/.test(src) && parseInt(RegExp.$1) >= 400) return true;
+    if (/cloudinary\.com.*\/w_(\d+)/.test(src) && parseInt(RegExp.$1) >= 400) return true;
+    if (/[?&]w=(\d+)/.test(src) && parseInt(RegExp.$1) >= 400) return true;
+    if (/[?&]width=(\d+)/.test(src) && parseInt(RegExp.$1) >= 400) return true;
+    return false;
+  };
+
   $("img").each((_, el) => {
-    const src = $(el).attr("src") ?? $(el).attr("data-src") ?? $(el).attr("data-lazy-src");
-    if (!src) return;
-    add(src, $(el).attr("alt") ?? undefined, "first", 200);
-    return false; // break after first match
+    const $el = $(el);
+    const src = $el.attr("src") ?? $el.attr("data-src") ?? $el.attr("data-lazy-src");
+    if (!src || !isLargeContentImage(src, $el)) return;
+    add(src, $el.attr("alt") ?? undefined, "first", 200);
+    return false; // stop after first match
   });
 
   // og:image / twitter:image — most reliable signal

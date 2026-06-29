@@ -373,12 +373,21 @@ export default function DashboardPage() {
 
         {/* Content */}
         <div
-          className="flex-1 px-8 py-8 space-y-8"
-          style={heroImg
-            ? { backgroundImage: `url(${heroImg.url})`, backgroundSize: "cover", backgroundPosition: "center top" }
-            : (mainBg ? { backgroundColor: mainBg } : undefined)
-          }
+          className="flex-1 relative"
+          style={!heroImg && mainBg ? { backgroundColor: mainBg } : undefined}
         >
+          {heroImg && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage: `url(${heroImg.url})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center top",
+                filter: "contrast(1.1) saturate(1.05)",
+              }}
+            />
+          )}
+          <div className="relative px-8 py-8 space-y-8">
           {/* Stats */}
           <div className="relative">
             {/* Decorative corner motif — mirrors botanical corner frames common on wedding sites */}
@@ -438,6 +447,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+          </div>{/* end inner relative content wrapper */}
         </div>
       </main>
     </div>
