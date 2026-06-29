@@ -219,6 +219,11 @@ export default function DashboardPage() {
   const h4FontWeight = h4El?.fontWeight ?? h3El?.fontWeight ?? pEl?.fontWeight ?? "600";
   const bodyFontWeight = pEl?.fontWeight;
 
+  const keyImages = styles.keyImages ?? [];
+  const heroImg = keyImages.find(img => img.context === "featured" || img.context === "hero")
+    ?? keyImages.find(img => img.context === "background");
+  const decorativeImgs = keyImages.filter(img => img.context === "decorative");
+
   return (
     <div
       className="flex h-screen overflow-hidden"
@@ -274,6 +279,20 @@ export default function DashboardPage() {
           ))}
         </nav>
 
+        {/* Decorative accent — mirrors how wedding sites use botanical motifs as dividers */}
+        {decorativeImgs[0] && (
+          <div className="flex justify-center px-4 py-2">
+            <img
+              src={decorativeImgs[0].url}
+              alt=""
+              aria-hidden
+              className="w-24 h-24 object-contain pointer-events-none select-none"
+              style={{ opacity: 0.22 }}
+              onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+            />
+          </div>
+        )}
+
         {/* Reset */}
         <div className="px-3 pb-5" style={{ borderTop: `1px solid ${borderColor}`, paddingTop: "12px" }}>
           <button
@@ -291,17 +310,50 @@ export default function DashboardPage() {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto" style={{ backgroundColor: mainBg }}>
         {/* Header */}
         <div
-          className="flex items-start justify-between px-8 py-6"
+          className="relative overflow-hidden flex items-start justify-between px-8 py-6"
           style={{ borderBottom: `1px solid ${borderColor}` }}
         >
-          <div>
+          {/* Hero/featured image — fades in from the right, matching how wedding sites
+              place couple or venue photography as a right-side banner */}
+          {heroImg && (
+            <>
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage: `url(${heroImg.url})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(to right, ${mainBg} 35%, ${withOpacity(mainBg, 0.85)} 55%, ${withOpacity(mainBg, 0.1)} 100%)`,
+                }}
+              />
+            </>
+          )}
+
+          {/* Decorative corner element — mirrors how wedding sites use botanical
+              motifs as corner frames on headers and hero sections */}
+          {decorativeImgs[1] && (
+            <img
+              src={decorativeImgs[1].url}
+              alt=""
+              aria-hidden
+              className="absolute top-0 right-0 h-full w-auto max-w-[140px] object-contain object-right-top pointer-events-none select-none"
+              style={{ opacity: 0.18 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          )}
+
+          <div className="relative">
             <h1
               className="text-2xl leading-tight"
               style={{ fontFamily: h1Font, color: h1Color, fontWeight: h1FontWeight }}
             >
               Couple Dashboard
             </h1>
-            {/* Script font here is the most dramatic font demo */}
             <p
               className="mt-1 text-base"
               style={{ color: mutedColor }}
@@ -310,7 +362,7 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0 mt-1">
+          <div className="relative flex items-center gap-3 flex-shrink-0 mt-1">
             <button
               className="px-4 py-2 text-sm rounded"
               style={{
@@ -336,7 +388,18 @@ export default function DashboardPage() {
         {/* Content */}
         <div className="flex-1 px-8 py-8 space-y-8">
           {/* Stats */}
-          <div>
+          <div className="relative">
+            {/* Decorative corner motif — mirrors botanical corner frames common on wedding sites */}
+            {decorativeImgs[0] && (
+              <img
+                src={decorativeImgs[0].url}
+                alt=""
+                aria-hidden
+                className="absolute -top-2 -right-4 w-28 h-28 object-contain pointer-events-none select-none"
+                style={{ opacity: 0.15 }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
             <h2
               className="text-sm uppercase tracking-widest mb-4"
               style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
@@ -385,34 +448,6 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-
-          {/* Visual elements extracted from the wedding site */}
-          {styles.keyImages && styles.keyImages.length > 0 && (
-            <div>
-              <h2
-                className="text-base mb-4"
-                style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
-              >
-                Visual Elements from Your Site
-              </h2>
-              <div className="grid grid-cols-4 gap-3">
-                {styles.keyImages.map((img, i) => (
-                  <div
-                    key={i}
-                    className="aspect-square rounded overflow-hidden border"
-                    style={{ borderColor }}
-                  >
-                    <img
-                      src={img.url}
-                      alt={img.alt ?? ""}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </main>
     </div>
