@@ -11,6 +11,12 @@ export interface ElementStyle {
   fontWeight?: string;
 }
 
+export interface KeyImage {
+  url: string;
+  alt?: string;
+  context: string;
+}
+
 export interface ExtractedStyles {
   backgroundColors: string[];
   textColors: string[];
@@ -18,6 +24,7 @@ export interface ExtractedStyles {
   fonts: { family: string; category: string }[];
   googleFontsLinks: string[];
   elementStyles: ElementStyle[];
+  keyImages: KeyImage[];
   pageTitle: string;
   url: string;
 }
@@ -515,6 +522,97 @@ function extractFonts(css: string): { family: string; category: string }[] {
   return [...found.entries()].map(([family, category]) => ({ family, category })).slice(0, 5);
 }
 
+// ── Key image extraction ──────────────────────────────────────────────────────
+
+function extractKeyImages(
+  rules: CssRule[],
+  $: ReturnType<typeof import("cheerio").load>,
+  baseUrl: string,
+  varMap: Map<string, string>
+): KeyImage[] {
+  const scored: Array<{ url: string; alt?: string; context: string; score: number }> = [];
+  const seen = new Set<string>();
+
+  function add(rawUrl: string, alt: string | undefined, context: string, score: number) {
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed.startsWith("data:")) return;
+    if (/1[xX]1|pixel\.gif|tracking|beacon|\.woff|\.ttf|\.eot|\.otf/i.test(trimmed)) return;
+    let absolute: string;
+    try { absolute = new URL(trimmed, baseUrl).toString(); } catch { return; }
+    if (seen.has(absolute)) return;
+    seen.add(absolute);
+    scored.push({ url: absolute, alt: alt || undefined, context, score });
+  }
+
+  // og:image / twitter:image — most reliable signal
+  const ogImage = $('meta[property="og:image"]').attr("content");
+  if (ogImage) add(ogImage, undefined, "featured", 100);
+  const twitterImage = $('meta[name="twitter:image"], meta[name="twitter:image:src"]').attr("content");
+  if (twitterImage) add(twitterImage, undefined, "featured", 90);
+
+  // Background images from CSS rules
+  for (const { selector, declarations } of rules) {
+    if (!declarations.includes("url(")) continue;
+    const resolved = resolveVars(declarations, varMap);
+    const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = urlRe.exec(resolved)) !== null) {
+      const s = selector.toLowerCase();
+      const score =
+        /hero|banner|cover|splash|jumbotron|parallax|showcase/i.test(s) ? 70 :
+        /header|section|main|body|page|layout|wrapper/i.test(s) ? 40 : 20;
+      add(m[1], undefined, "background", score);
+    }
+  }
+
+  // <img> tags in prominent sections
+  const heroSelectors = ["header", "section", ".hero", "[class*='hero']", "[class*='banner']", "[class*='cover']", "figure", "picture"];
+  for (const sel of heroSelectors) {
+    try {
+      $(sel).find("img").each((_, el) => {
+        const src = $(el).attr("src") ?? $(el).attr("data-src") ?? $(el).attr("data-lazy-src");
+        const alt = $(el).attr("alt");
+        if (src) add(src, alt ?? undefined, "hero", 60);
+      });
+    } catch { /* invalid selector — skip */ }
+  }
+
+  // <img> with decorative alt text or class names
+  $("img").each((_, el) => {
+    const src = $(el).attr("src") ?? $(el).attr("data-src");
+    const alt = $(el).attr("alt") ?? "";
+    const cls = $(el).attr("class") ?? "";
+    const combined = alt + " " + cls;
+    const isDecorative =
+      /flower|floral|bloom|petal|botanical|garden|vine|wreath|foliage|ornament|ribbon|lace|leaf|decor/i.test(combined);
+    if (src) add(src, alt || undefined, isDecorative ? "decorative" : "page", isDecorative ? 80 : 10);
+  });
+
+  // Large <img> by explicit dimensions
+  $("img").each((_, el) => {
+    const src = $(el).attr("src") ?? $(el).attr("data-src");
+    const w = parseInt($(el).attr("width") ?? "0");
+    const h = parseInt($(el).attr("height") ?? "0");
+    if (src && (w >= 400 || h >= 300)) {
+      add(src, $(el).attr("alt") ?? undefined, "featured", 50);
+    }
+  });
+
+  // General images — fill remaining slots, skip obvious icons/logos
+  $("img").each((_, el) => {
+    const src = $(el).attr("src") ?? $(el).attr("data-src");
+    const alt = $(el).attr("alt") ?? "";
+    if (!src) return;
+    if (/logo|icon|avatar|sprite|arrow|btn|check|badge|star/i.test(alt + " " + src)) return;
+    add(src, alt || undefined, "page", 5);
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map(({ url, alt, context }) => ({ url, alt, context }));
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 async function fetchText(url: string): Promise<string> {
@@ -546,7 +644,7 @@ export async function POST(req: NextRequest) {
 
     const cssChunks: string[] = [];
 
-    $("style").each((_, el) => cssChunks.push($(el).text()));
+    $("style").each((_, el) => { cssChunks.push($(el).text()); });
 
     // Inline styles on structural elements — prepend selector so classifier works
     for (const tag of ["body", "header", "main", "section", "footer", "nav", "article"]) {
@@ -597,6 +695,7 @@ export async function POST(req: NextRequest) {
     const accentColors = topByBucket(scores, "accent", used, 3);
 
     const elementStyles = extractElementStyles(rules, $, varMap);
+    const keyImages = extractKeyImages(rules, $, url, varMap);
     const cssFonts = extractFonts(allCss);
 
     // Collect Google Fonts stylesheet links directly from the HTML <head>
@@ -651,6 +750,7 @@ export async function POST(req: NextRequest) {
       fonts,
       googleFontsLinks,
       elementStyles,
+      keyImages,
       pageTitle,
       url,
     } satisfies ExtractedStyles);

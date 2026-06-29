@@ -18,6 +18,12 @@ interface ElementStyle {
   fontWeight?: string;
 }
 
+interface KeyImage {
+  url: string;
+  alt?: string;
+  context: string;
+}
+
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
@@ -25,6 +31,7 @@ interface ExtractResult {
   fonts: FontResult[];
   googleFontsLinks: string[];
   elementStyles: ElementStyle[];
+  keyImages?: KeyImage[];
   pageTitle: string;
   url: string;
 }
@@ -121,6 +128,33 @@ export default function StylePreview({ result, loading }: Props) {
           </div>
         ) : (
           <p className="text-sm font-mono text-gray-400">No element styles detected</p>
+        )}
+      </div>
+
+      {/* Key images */}
+      <div className="border border-gray-200 rounded px-4 py-3">
+        <p className="text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Visual Elements</p>
+        {loading ? (
+          <div className="grid grid-cols-4 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="aspect-square rounded bg-gray-200 animate-pulse" />
+            ))}
+          </div>
+        ) : result?.keyImages && result.keyImages.length > 0 ? (
+          <div className="grid grid-cols-4 gap-2">
+            {result.keyImages.slice(0, 8).map((img, i) => (
+              <div key={i} className="aspect-square rounded overflow-hidden bg-gray-100 border border-gray-200">
+                <img
+                  src={img.url}
+                  alt={img.alt ?? ""}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-mono text-gray-400">No images detected</p>
         )}
       </div>
 

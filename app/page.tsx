@@ -19,6 +19,12 @@ interface ElementStyle {
   fontWeight?: string;
 }
 
+interface KeyImage {
+  url: string;
+  alt?: string;
+  context: string;
+}
+
 interface ExtractResult {
   backgroundColors: string[];
   textColors: string[];
@@ -26,6 +32,7 @@ interface ExtractResult {
   fonts: FontResult[];
   googleFontsLinks: string[];
   elementStyles: ElementStyle[];
+  keyImages?: KeyImage[];
   pageTitle: string;
   url: string;
 }

@@ -8,6 +8,12 @@ export interface ElementStyle {
   fontWeight?: string;
 }
 
+export interface KeyImage {
+  url: string;
+  alt?: string;
+  context: string;
+}
+
 export interface ExtractedStyles {
   backgroundColors: string[];
   textColors: string[];
@@ -15,6 +21,7 @@ export interface ExtractedStyles {
   fonts: { family: string; category: string }[];
   googleFontsLinks: string[];
   elementStyles: ElementStyle[];
+  keyImages?: KeyImage[];
   pageTitle: string;
   url: string;
 }

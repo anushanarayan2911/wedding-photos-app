@@ -385,6 +385,34 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+
+          {/* Visual elements extracted from the wedding site */}
+          {styles.keyImages && styles.keyImages.length > 0 && (
+            <div>
+              <h2
+                className="text-base mb-4"
+                style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
+              >
+                Visual Elements from Your Site
+              </h2>
+              <div className="grid grid-cols-4 gap-3">
+                {styles.keyImages.map((img, i) => (
+                  <div
+                    key={i}
+                    className="aspect-square rounded overflow-hidden border"
+                    style={{ borderColor }}
+                  >
+                    <img
+                      src={img.url}
+                      alt={img.alt ?? ""}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
