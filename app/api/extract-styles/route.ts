@@ -37,6 +37,10 @@ const NOISE_COLORS = new Set([
   "rgba(0,0,0,0)", "rgba(0,0,0,1)",
   "rgba(255,255,255,0)", "rgba(255,255,255,1)",
   "transparent",
+  // Wix platform constant — its default focus ring / rich-text-editor accent
+  // colour, present in nearly every Wix site's vendor CSS regardless of the
+  // site's own brand palette. Not a real design signal.
+  "#116dff",
 ]);
 
 function isLowAlpha(c: string): boolean {
@@ -746,7 +750,13 @@ export async function POST(req: NextRequest) {
     const allCss = cssChunks.join("\n");
     const rules = parseCssRules(allCss);
     const varMap = buildCssVarMap(allCss);
-    const scores = scoreColors(rules);
+    // Resolve CSS custom properties before scoring — site builders (e.g. Wix)
+    // define their whole brand palette as vars like `--color_15: 47,51,44` and
+    // apply it via `rgb(var(--color_15))`. Scoring raw declarations would miss
+    // every one of those and only see incidental literal colors from vendor
+    // boilerplate CSS instead.
+    const resolvedRules = rules.map((r) => ({ ...r, declarations: resolveVars(r.declarations, varMap) }));
+    const scores = scoreColors(resolvedRules);
 
     // Boost CSS variable colors declared in :root/html/body as brand tokens
     for (const c of extractCssVariableColors(allCss)) {

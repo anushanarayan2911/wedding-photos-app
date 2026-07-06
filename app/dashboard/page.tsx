@@ -6,6 +6,32 @@ import { deriveTheme, withOpacity, isLight, getLuminance, type ExtractedStyles, 
 
 // ── Accessibility helpers ─────────────────────────────────────────────────────
 
+/** True if a colour is fully (or near-fully) opaque — safe to paint a solid fill with.
+ *  Sites use low-alpha rgba/hsla tints for hover states and dim overlays; those aren't
+ *  real background colours and would just wash out if used as a solid sidebar fill. */
+function isOpaque(color: string): boolean {
+  const m =
+    color.match(/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i) ??
+    color.match(/hsla?\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*[\d.]+%\s*,\s*([\d.]+)\s*\)/i);
+  return !m || parseFloat(m[1]) >= 0.9;
+}
+
+/** HSL saturation (0–1) — higher means more chromatic / less grey. */
+function getSaturation(color: string): number {
+  const m =
+    color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i) ??
+    color.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i)?.map((v, i) => i === 0 ? v : v + v);
+  const rgb = m
+    ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)].map(c => c / 255)
+    : (() => { const rm = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return rm ? [+rm[1]/255,+rm[2]/255,+rm[3]/255] : null; })();
+  if (!rgb) return 0;
+  const max = Math.max(...rgb), min = Math.min(...rgb);
+  const l = (max + min) / 2;
+  if (max === min) return 0;
+  const d = max - min;
+  return d / (l > 0.5 ? 2 - max - min : max + min);
+}
+
 /** WCAG 2.1 contrast ratio between two colours. */
 function contrastRatio(fg: string, bg: string): number {
   const l1 = getLuminance(fg) + 0.05;
@@ -187,10 +213,19 @@ export default function DashboardPage() {
   // Use white as the contrast reference for text when the bg is transparent.
   const contrastBg = mainBg ?? "#ffffff";
 
-  // Sidebar uses the site's primary accent colour.
-  const sidebarBg = accentColors[0]
-    ?? bgsByLuminance[bgsByLuminance.length - 1]
-    ?? "#1c1c1c";
+  // Sidebar: use the site's own nav/header background colour when the scraper
+  // found one — that's the actual navbar colour, not a guess. Otherwise fall
+  // back to the most chromatically distinct *background* colour (mid-dark
+  // range only — not white, not pure black). Deliberately excludes
+  // textColors/accentColors — those are text and border/UI swatches, not
+  // background values, and picking from them was giving the sidebar a text
+  // colour instead of a background colour.
+  const sidebarBg = navEl?.backgroundColor ?? headerEl?.backgroundColor ?? ((): string => {
+    const candidates = backgroundColors
+      .filter(c => isOpaque(c) && getLuminance(c) > 0.02 && getLuminance(c) < 0.75) // exclude translucent overlays, pure white, pure black
+      .sort((a, b) => getSaturation(b) - getSaturation(a));
+    return candidates[0] ?? bgsByLuminance[bgsByLuminance.length - 1] ?? "#1c1c1c";
+  })();
 
   // Border: subtle against the content background
   const borderHint = sectionEl?.borderColor ?? articleEl?.borderColor

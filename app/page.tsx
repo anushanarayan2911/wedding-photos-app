@@ -110,6 +110,7 @@ export default function SyncPage() {
               onChange={(e) => setInputUrl(e.target.value)}
               placeholder="https://withjoy.com/sarah-and-james"
               className="w-full border border-gray-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400"
+              suppressHydrationWarning
             />
             <button
               type="submit"
