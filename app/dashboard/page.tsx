@@ -101,6 +101,12 @@ export default function DashboardPage() {
     router.push("/");
   }
 
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    sessionStorage.removeItem(SESSION_KEY);
+    router.push("/login");
+  }
+
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || !fileList.length) return;
     setIsUploading(true);
@@ -132,10 +138,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return;
-    try {
-      const parsed: ExtractedStyles = JSON.parse(raw);
+    function applyStyles(parsed: ExtractedStyles) {
       const derived = deriveTheme(parsed);
 
       // Inject fonts so they start downloading immediately.
@@ -198,10 +201,43 @@ export default function DashboardPage() {
 
       setStyles(parsed);
       setTheme(derived);
-    } catch {
-      // sessionStorage data was malformed — show nothing
     }
-  }, []);
+
+    let cancelled = false;
+
+    (async () => {
+      // Require a logged-in account to view the dashboard.
+      const sessionRes = await fetch("/api/auth/session").catch(() => null);
+      const sessionData = sessionRes?.ok ? await sessionRes.json() : { user: null };
+      if (cancelled) return;
+      if (!sessionData.user) {
+        router.push("/login");
+        return;
+      }
+
+      // Fast path: paint from this browser's cached copy immediately...
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      let cached: ExtractedStyles | null = null;
+      if (raw) {
+        try { cached = JSON.parse(raw); } catch { /* malformed cache — ignore */ }
+      }
+      if (cached && !cancelled) applyStyles(cached);
+
+      // ...then reconcile with the account's saved site, which is the source
+      // of truth (lets a couple log in on a new device and see their board).
+      const stylesRes = await fetch("/api/account/styles").catch(() => null);
+      if (cancelled) return;
+      const stylesData = stylesRes?.ok ? await stylesRes.json() : { styles: null };
+      if (stylesData.styles) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(stylesData.styles));
+        applyStyles(stylesData.styles);
+      } else if (!cached) {
+        router.push("/"); // no connected site yet
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [router]);
 
   if (!theme || !styles) return <LoadingScreen />;
 
@@ -388,8 +424,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Reset */}
-        <div className="px-3 pb-5" style={{ borderTop: `1px solid ${borderColor}`, paddingTop: "12px" }}>
+        {/* Reset / account */}
+        <div className="px-3 pb-5 space-y-0.5" style={{ borderTop: `1px solid ${borderColor}`, paddingTop: "12px" }}>
           <button
             onClick={handleReset}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
@@ -397,6 +433,14 @@ export default function DashboardPage() {
           >
             <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
             Connect new site
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
+            style={{ color: bodyColor, opacity: 0.5 }}
+          >
+            <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">⏻</span>
+            Log out
           </button>
         </div>
       </aside>

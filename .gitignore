@@ -17,3 +17,6 @@ Thumbs.db
 # User-uploaded photos
 public/uploads/*
 !public/uploads/.gitkeep
+
+# Local account/session store (contains password hashes — never commit)
+.data/

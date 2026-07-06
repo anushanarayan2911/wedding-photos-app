@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SESSION_KEY } from "@/lib/theme";
 
@@ -43,16 +44,34 @@ interface Props {
 
 export default function StylePreview({ result, loading }: Props) {
   const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const hasResult = result && (
     result.backgroundColors.length > 0 ||
     result.textColors.length > 0 ||
     result.accentColors.length > 0
   );
 
-  function handleContinue() {
+  async function handleContinue() {
     if (!result) return;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
-    router.push("/dashboard");
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await fetch("/api/account/styles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ styles: result }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Could not save your site to your account");
+      }
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
+      router.push("/dashboard");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Something went wrong");
+      setSaving(false);
+    }
   }
 
   return (
@@ -158,12 +177,14 @@ export default function StylePreview({ result, loading }: Props) {
         )}
       </div>
 
+      {saveError && <p className="text-red-600 text-sm font-mono">{saveError}</p>}
+
       <button
         onClick={handleContinue}
         className="w-full border border-gray-300 rounded py-3 text-sm font-mono text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        disabled={loading || !hasResult}
+        disabled={loading || !hasResult || saving}
       >
-        Looks good, continue
+        {saving ? "Saving…" : "Looks good, continue"}
       </button>
     </div>
   );

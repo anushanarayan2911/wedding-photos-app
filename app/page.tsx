@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import StylePreview from "@/components/StylePreview";
 
@@ -44,6 +44,14 @@ export default function SyncPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<ExtractResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((data) => setIsLoggedIn(!!data.user))
+      .catch(() => setIsLoggedIn(false));
+  }, []);
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -100,33 +108,54 @@ export default function SyncPage() {
 
         {/* Right — form + preview */}
         <div className="space-y-4">
-          <form onSubmit={handleConnect} className="space-y-3">
-            <label className="block text-sm text-gray-600 font-mono">
-              Wedding Website URL
-            </label>
-            <input
-              type="text"
-              value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
-              placeholder="https://withjoy.com/sarah-and-james"
-              className="w-full border border-gray-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400"
-              suppressHydrationWarning
-            />
-            <button
-              type="submit"
-              disabled={status === "loading"}
-              className="w-full bg-black text-white font-mono py-3 rounded hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {status === "loading" ? "Scanning…" : "Connect Site"}
-            </button>
-          </form>
+          {isLoggedIn === false ? (
+            <div className="border border-gray-200 rounded p-6 text-center space-y-3">
+              <p className="font-mono font-bold text-gray-900">Create an account to get started</p>
+              <p className="text-sm text-gray-500">
+                Sign up first, then connect your wedding website to your board.
+              </p>
+              <a
+                href="/signup"
+                className="inline-block bg-black text-white font-mono py-3 px-6 rounded hover:bg-gray-800 transition-colors"
+              >
+                Sign Up
+              </a>
+              <p className="text-sm text-gray-500">
+                Already have an account?{" "}
+                <a href="/login" className="text-gray-900 font-bold hover:underline">Log in</a>
+              </p>
+            </div>
+          ) : (
+            <>
+              <form onSubmit={handleConnect} className="space-y-3">
+                <label className="block text-sm text-gray-600 font-mono">
+                  Wedding Website URL
+                </label>
+                <input
+                  type="text"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  placeholder="https://withjoy.com/sarah-and-james"
+                  className="w-full border border-gray-300 rounded px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  suppressHydrationWarning
+                />
+                <button
+                  type="submit"
+                  disabled={status === "loading" || isLoggedIn === null}
+                  className="w-full bg-black text-white font-mono py-3 rounded hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {status === "loading" ? "Scanning…" : "Connect Site"}
+                </button>
+              </form>
 
-          {status === "error" && (
-            <p className="text-red-600 text-sm font-mono">{errorMsg}</p>
-          )}
+              {status === "error" && (
+                <p className="text-red-600 text-sm font-mono">{errorMsg}</p>
+              )}
 
-          {(status === "success" || status === "loading") && (
-            <StylePreview result={result} loading={status === "loading"} />
+              {(status === "success" || status === "loading") && (
+                <StylePreview result={result} loading={status === "loading"} />
+              )}
+            </>
           )}
         </div>
       </main>
