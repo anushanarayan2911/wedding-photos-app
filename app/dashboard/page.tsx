@@ -1,8 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deriveTheme, withOpacity, isLight, getLuminance, type ExtractedStyles, type Theme, SESSION_KEY } from "@/lib/theme";
+
+interface UploadedPhoto {
+  url: string;
+  name: string;
+  uploadedAt: string;
+}
+
+/** Relative time like "5m ago" / "2h ago" / "3d ago" for the most recent upload. */
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
 
 // ── Accessibility helpers ─────────────────────────────────────────────────────
 
@@ -68,21 +86,50 @@ const NAV_ITEMS = [
   { label: "Settings", active: false },
 ];
 
-const STATS = [
-  { label: "Photos Uploaded", value: "142" },
-  { label: "Contributors", value: "38" },
-  { label: "Last Upload", value: "2h ago" },
-];
 
 export default function DashboardPage() {
   const router = useRouter();
   const [theme, setTheme] = useState<Theme | null>(null);
   const [styles, setStyles] = useState<ExtractedStyles | null>(null);
+  const [uploads, setUploads] = useState<UploadedPhoto[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleReset() {
     sessionStorage.removeItem(SESSION_KEY);
     router.push("/");
   }
+
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || !fileList.length) return;
+    setIsUploading(true);
+    setUploadError(null);
+    const formData = new FormData();
+    Array.from(fileList).forEach((file) => formData.append("files", file));
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      setUploads((prev) => [...(data.uploaded as UploadedPhoto[]), ...prev]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    handleFiles(e.dataTransfer.files);
+  }
+
+  useEffect(() => {
+    fetch("/api/upload")
+      .then((res) => res.json())
+      .then((data) => setUploads(data.photos ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION_KEY);
@@ -262,6 +309,12 @@ export default function DashboardPage() {
   const h3FontWeight = h3El?.fontWeight ?? h2El?.fontWeight ?? "700";
   const h4FontWeight = h4El?.fontWeight ?? h3El?.fontWeight ?? pEl?.fontWeight ?? "600";
   const bodyFontWeight = pEl?.fontWeight;
+
+  const stats = [
+    { label: "Photos Uploaded", value: String(uploads.length) },
+    { label: "Contributors", value: "38" },
+    { label: "Last Upload", value: uploads[0] ? formatRelativeTime(uploads[0].uploadedAt) : "—" },
+  ];
 
   return (
     <div
@@ -443,7 +496,7 @@ export default function DashboardPage() {
               At a Glance
             </h2>
             <div className="grid grid-cols-3 gap-4">
-              {STATS.map(({ label, value }) => (
+              {stats.map(({ label, value }) => (
                 <div
                   key={label}
                   className="px-6 py-5 rounded"
@@ -471,39 +524,66 @@ export default function DashboardPage() {
 
           {/* Recent uploads */}
           <div>
-            <h2
-              className="text-base mb-4"
-              style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
-            >
-              Recent Uploads
-            </h2>
-            <div className="grid grid-cols-4 gap-3">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <PhotoPlaceholder key={i} borderColor={borderColor} />
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h2
+                className="text-base"
+                style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
+              >
+                Recent Uploads
+              </h2>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="px-4 py-2 text-xs uppercase tracking-wide rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: primaryBtnBg, color: primaryBtnText }}
+              >
+                {isUploading ? "Uploading…" : "Upload Photos"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+              />
             </div>
+
+            {uploadError && (
+              <p className="text-sm mb-4" style={{ color: "#c0392b" }}>{uploadError}</p>
+            )}
+
+            {uploads.length === 0 ? (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded border-2 border-dashed py-12 flex items-center justify-center text-sm cursor-pointer"
+                style={{ borderColor, color: mutedColor }}
+              >
+                Drag photos here, or click to upload
+              </div>
+            ) : (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                className="grid grid-cols-4 gap-3"
+              >
+                {uploads.map((photo) => (
+                  <div
+                    key={photo.url}
+                    className="aspect-square rounded overflow-hidden"
+                    style={{ border: `1px solid ${borderColor}` }}
+                  >
+                    <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           </div>{/* end inner relative content wrapper */}
         </div>
       </main>
-    </div>
-  );
-}
-
-function PhotoPlaceholder({ borderColor }: { borderColor: string }) {
-  return (
-    <div
-      className="aspect-square rounded overflow-hidden relative"
-      style={{ backgroundColor: "#f3f3f3", border: `1px solid ${borderColor}` }}
-    >
-      <svg
-        className="absolute inset-0 w-full h-full"
-        xmlns="http://www.w3.org/2000/svg"
-        preserveAspectRatio="none"
-      >
-        <line x1="0" y1="0" x2="100%" y2="100%" stroke="#d1d1d1" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        <line x1="100%" y1="0" x2="0" y2="100%" stroke="#d1d1d1" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-      </svg>
     </div>
   );
 }

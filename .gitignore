@@ -13,3 +13,7 @@ npm-debug.log*
 
 .DS_Store
 Thumbs.db
+
+# User-uploaded photos
+public/uploads/*
+!public/uploads/.gitkeep
