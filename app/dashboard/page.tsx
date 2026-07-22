@@ -79,8 +79,7 @@ function pickUi(hint: string | undefined, bg: string, pool: string[]): string {
 }
 
 const NAV_ITEMS = [
-  { label: "Overview", active: true },
-  { label: "Memory Board", active: false },
+  { label: "Memory Board", active: true },
   { label: "Uploads", active: false },
   { label: "Share & Invite", active: false },
   { label: "Settings", active: false },
@@ -346,12 +345,6 @@ export default function DashboardPage() {
   const h4FontWeight = h4El?.fontWeight ?? h3El?.fontWeight ?? pEl?.fontWeight ?? "600";
   const bodyFontWeight = pEl?.fontWeight;
 
-  const stats = [
-    { label: "Photos Uploaded", value: String(uploads.length) },
-    { label: "Contributors", value: "38" },
-    { label: "Last Upload", value: uploads[0] ? formatRelativeTime(uploads[0].uploadedAt) : "—" },
-  ];
-
   return (
     <div
       className="flex h-screen overflow-hidden"
@@ -520,52 +513,6 @@ export default function DashboardPage() {
             />
           )}
           <div className="relative px-8 py-8 space-y-8">
-          {/* Stats */}
-          <div className="relative">
-            {/* Decorative corner motif — mirrors botanical corner frames common on wedding sites */}
-            {decorativeImgs[0] && (
-              <img
-                src={decorativeImgs[0].url}
-                alt=""
-                aria-hidden
-                className="absolute -top-2 -right-4 w-28 h-28 object-contain pointer-events-none select-none"
-                style={{ opacity: 0.15 }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            )}
-            <h2
-              className="text-sm uppercase tracking-widest mb-4"
-              style={{ fontFamily: h2Font, color: h2Color, fontWeight: h2FontWeight }}
-            >
-              At a Glance
-            </h2>
-            <div className="grid grid-cols-3 gap-4">
-              {stats.map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="px-6 py-5 rounded"
-                  style={{
-                    backgroundColor: contrastBg,
-                    borderTop: `3px solid ${h1Color}`,
-                  }}
-                >
-                  <h4
-                    className="text-xs uppercase tracking-widest mb-2"
-                    style={{ color: h4Color, fontFamily: h4Font, fontWeight: h4FontWeight }}
-                  >
-                    {label}
-                  </h4>
-                  <h3
-                    className="text-3xl leading-none"
-                    style={{ fontFamily: h3Font, color: h3Color, fontWeight: h3FontWeight }}
-                  >
-                    {value}
-                  </h3>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Recent uploads */}
           <div>
             <div className="flex items-center justify-between mb-4">
