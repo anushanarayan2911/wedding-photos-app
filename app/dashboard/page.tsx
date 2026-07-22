@@ -6,13 +6,54 @@ import { withOpacity, type ExtractedStyles, SESSION_KEY } from "@/lib/theme";
 import { deriveDashboardTheme } from "@/lib/dashboard-theme";
 import { MemoryBoard } from "@/components/memory-board/MemoryBoard";
 import type { UploadedPhoto } from "@/components/memory-board/types";
+import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { label: "Memory Board", active: true },
-  { label: "Uploads", active: false },
-  { label: "Share & Invite", active: false },
-  { label: "Settings", active: false },
+type NavIconType = "board" | "uploads" | "share" | "settings";
+
+const NAV_ITEMS: { label: string; active: boolean; icon: NavIconType }[] = [
+  { label: "Memory Board", active: true, icon: "board" },
+  { label: "Uploads", active: false, icon: "uploads" },
+  { label: "Share & Invite", active: false, icon: "share" },
+  { label: "Settings", active: false, icon: "settings" },
 ];
+
+function NavIcon({ type, className }: { type: NavIconType; className?: string }) {
+  const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, className };
+  switch (type) {
+    case "board":
+      return (
+        <svg {...props}>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M3 16l4.5-4.5L12 16l3-3 6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "uploads":
+      return (
+        <svg {...props}>
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4M5 16v2a2 2 0 002 2h10a2 2 0 002-2v-2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "share":
+      return (
+        <svg {...props}>
+          <circle cx="18" cy="5" r="2.5" />
+          <circle cx="6" cy="12" r="2.5" />
+          <circle cx="18" cy="19" r="2.5" />
+          <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "settings":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+  }
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -20,6 +61,7 @@ export default function DashboardPage() {
   const [uploads, setUploads] = useState<UploadedPhoto[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -177,7 +219,10 @@ export default function DashboardPage() {
     >
       {/* ── Sidebar ── */}
       <aside
-        className="w-56 flex-shrink-0 flex flex-col h-screen"
+        className={cn(
+          "flex-shrink-0 flex flex-col h-screen overflow-hidden transition-[width] duration-300 ease-in-out",
+          sidebarCollapsed ? "w-[76px]" : "w-56"
+        )}
         style={{
           backgroundColor: theme.sidebarBg,
           borderRight: `1px solid ${withOpacity(theme.navColor, 0.2)}`,
@@ -185,24 +230,54 @@ export default function DashboardPage() {
       >
         {/* Logo */}
         <div
-          className="flex items-center gap-2.5 px-4 py-5"
+          className={cn("flex items-center py-5", sidebarCollapsed ? "px-2 justify-center" : "px-4 gap-2.5")}
           style={{ borderBottom: `1px solid ${withOpacity(theme.navColor, 0.2)}` }}
         >
           <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: theme.navColor }} />
-          <span
-            className="text-xs font-bold tracking-widest uppercase"
-            style={{ color: theme.navColor }}
+          {!sidebarCollapsed && (
+            <span
+              className="text-xs font-bold tracking-widest uppercase whitespace-nowrap"
+              style={{ color: theme.navColor }}
+            >
+              Memoboard
+            </span>
+          )}
+        </div>
+
+        {/* Collapse toggle */}
+        <div
+          className={cn("flex px-3 py-2", sidebarCollapsed ? "justify-center" : "justify-end")}
+          style={{ borderBottom: `1px solid ${withOpacity(theme.navColor, 0.1)}` }}
+        >
+          <button
+            onClick={() => setSidebarCollapsed((c) => !c)}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors hover:opacity-100"
+            style={{ color: theme.navColor, opacity: 0.6 }}
           >
-            Memoboard
-          </span>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className={cn("w-3.5 h-3.5 transition-transform duration-300", sidebarCollapsed && "rotate-180")}
+            >
+              <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-5 px-3 space-y-0.5">
-          {NAV_ITEMS.map(({ label, active }) => (
+          {NAV_ITEMS.map(({ label, active, icon }) => (
             <button
               key={label}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors"
+              title={sidebarCollapsed ? label : undefined}
+              className={cn(
+                "w-full flex items-center rounded-md text-sm text-left transition-colors",
+                sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+              )}
               style={
                 active
                   ? {
@@ -216,17 +291,14 @@ export default function DashboardPage() {
                     }
               }
             >
-              <span
-                className="w-3.5 h-3.5 border flex-shrink-0"
-                style={{ borderColor: active ? theme.activeNavColor : theme.borderColor }}
-              />
-              {label}
+              <NavIcon type={icon} className="w-4 h-4 flex-shrink-0" />
+              {!sidebarCollapsed && <span className="whitespace-nowrap">{label}</span>}
             </button>
           ))}
         </nav>
 
         {/* Decorative accent — mirrors how wedding sites use botanical motifs as dividers */}
-        {decorativeImgs[0] && (
+        {!sidebarCollapsed && decorativeImgs[0] && (
           <div className="flex justify-center px-4 py-2">
             <img
               src={decorativeImgs[0].url}
@@ -243,25 +315,33 @@ export default function DashboardPage() {
         <div className="px-3 pb-5 space-y-0.5" style={{ borderTop: `1px solid ${theme.borderColor}`, paddingTop: "12px" }}>
           <button
             onClick={handleReset}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
+            title={sidebarCollapsed ? "Connect new site" : undefined}
+            className={cn(
+              "w-full flex items-center rounded-md text-sm text-left transition-colors hover:opacity-100",
+              sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+            )}
             style={{ color: theme.bodyColor, opacity: 0.5 }}
           >
             <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
-            Connect new site
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Connect new site</span>}
           </button>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left transition-colors hover:opacity-100"
+            title={sidebarCollapsed ? "Log out" : undefined}
+            className={cn(
+              "w-full flex items-center rounded-md text-sm text-left transition-colors hover:opacity-100",
+              sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+            )}
             style={{ color: theme.bodyColor, opacity: 0.5 }}
           >
             <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">⏻</span>
-            Log out
+            {!sidebarCollapsed && <span className="whitespace-nowrap">Log out</span>}
           </button>
         </div>
       </aside>
 
       {/* ── Main ── */}
-      <main ref={mainRef} className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
+      <main ref={mainRef} className="relative flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
         {/* Slim editorial masthead */}
         <div
           className="sticky top-0 z-40 flex items-center justify-between px-8 py-4"
