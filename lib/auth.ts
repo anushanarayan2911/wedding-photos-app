@@ -3,6 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import type { ExtractedStyles } from "./theme";
+import type { CategoryId } from "@/components/memory-board/categories";
 
 // ── Storage ────────────────────────────────────────────────────────────────
 // No database in this project — accounts are a small couple-per-record JSON
@@ -12,6 +13,7 @@ import type { ExtractedStyles } from "./theme";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
+const PHOTOS_FILE = path.join(DATA_DIR, "photos.json");
 
 export const SESSION_COOKIE = "session_token";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -141,6 +143,29 @@ export async function getUserFromRequest(req: NextRequest): Promise<User | null>
   const userId = await getSessionUserId(token);
   if (!userId) return null;
   return getUserById(userId);
+}
+
+// ── Photos ───────────────────────────────────────────────────────────────
+
+export interface PhotoRecord {
+  id: string;
+  filename: string;
+  url: string;
+  name: string;
+  category: CategoryId;
+  accountId: string;
+  uploadedAt: string;
+}
+
+export async function listPhotos(accountId: string): Promise<PhotoRecord[]> {
+  const photos = await readJson<PhotoRecord[]>(PHOTOS_FILE, []);
+  return photos.filter((p) => p.accountId === accountId);
+}
+
+export async function addPhotos(records: PhotoRecord[]): Promise<void> {
+  const photos = await readJson<PhotoRecord[]>(PHOTOS_FILE, []);
+  photos.push(...records);
+  await writeJson(PHOTOS_FILE, photos);
 }
 
 export const SESSION_COOKIE_OPTIONS = {

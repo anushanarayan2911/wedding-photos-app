@@ -1,23 +1,11 @@
+import type { CategoryId } from "./categories";
+
 export interface Photo {
   id: string;
   src: string;
   alt: string;
   caption?: string;
   credit?: "professional" | "guest";
-}
-
-export interface GuestQuote {
-  name: string;
-  relation: string;
-  quote: string;
-}
-
-export interface FavouriteMemory {
-  name: string;
-  relation: string;
-  quote: string;
-  photo: Photo;
-  isVideoMoment?: boolean;
 }
 
 export interface TimelineEvent {
@@ -32,7 +20,9 @@ export interface SectionMeta {
 }
 
 export interface UploadedPhoto {
+  id: string;
   url: string;
   name: string;
   uploadedAt: string;
+  category: CategoryId;
 }

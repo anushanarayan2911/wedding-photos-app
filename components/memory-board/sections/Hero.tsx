@@ -3,7 +3,7 @@
 import type { RefObject } from "react";
 import { motion } from "framer-motion";
 import { ParallaxImage } from "../primitives/ParallaxImage";
-import { heroFallbackPhoto, heroPlaceholder } from "../data";
+import { heroPlaceholder } from "../data";
 import type { DashboardTheme } from "@/lib/dashboard-theme";
 import type { KeyImage } from "@/lib/theme";
 import type { Photo } from "../types";
@@ -17,13 +17,20 @@ interface Props {
 
 /** The opening beat — sets the scene before the day's timeline begins. */
 export function Hero({ theme, containerRef, coupleName, heroImg }: Props) {
-  const photo: Photo = heroImg
+  const photo: Photo | null = heroImg
     ? { id: "site-hero", src: heroImg.url, alt: heroImg.alt || coupleName }
-    : heroFallbackPhoto;
+    : null;
 
   return (
     <section id="hero" className="relative h-screen w-full overflow-hidden">
-      <ParallaxImage photo={photo} theme={theme} containerRef={containerRef} className="absolute inset-0" strength={70} />
+      {photo ? (
+        <ParallaxImage photo={photo} theme={theme} containerRef={containerRef} className="absolute inset-0" strength={70} />
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={{ background: `linear-gradient(135deg, ${theme.primaryBtnBg}, ${theme.h1Color})` }}
+        />
+      )}
       <div
         className="absolute inset-0"
         style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.6))" }}

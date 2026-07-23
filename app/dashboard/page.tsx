@@ -6,6 +6,7 @@ import { withOpacity, type ExtractedStyles, SESSION_KEY } from "@/lib/theme";
 import { deriveDashboardTheme } from "@/lib/dashboard-theme";
 import { MemoryBoard } from "@/components/memory-board/MemoryBoard";
 import type { UploadedPhoto } from "@/components/memory-board/types";
+import type { CategoryId } from "@/components/memory-board/categories";
 import { cn } from "@/lib/utils";
 
 type NavIconType = "board" | "uploads" | "share" | "settings";
@@ -78,12 +79,13 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  async function handleFiles(fileList: FileList | null) {
+  async function handleFiles(fileList: FileList | null, category: CategoryId) {
     if (!fileList || !fileList.length) return;
     setIsUploading(true);
     setUploadError(null);
     const formData = new FormData();
     Array.from(fileList).forEach((file) => formData.append("files", file));
+    formData.append("category", category);
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
@@ -96,9 +98,9 @@ export default function DashboardPage() {
     }
   }
 
-  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+  function handleDrop(e: React.DragEvent<HTMLDivElement>, category: CategoryId) {
     e.preventDefault();
-    handleFiles(e.dataTransfer.files);
+    handleFiles(e.dataTransfer.files, category);
   }
 
   useEffect(() => {
