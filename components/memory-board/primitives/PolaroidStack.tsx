@@ -26,7 +26,7 @@ export function PolaroidStack({ photos, theme, onOpen }: Props) {
           transition={{ type: "spring", stiffness: 260, damping: 20 }}
           onClick={() => onOpen?.(i)}
         >
-          <PhotoFrame photo={p} theme={theme} className="w-52 h-60 md:w-64 md:h-72" />
+          <PhotoFrame photo={p} theme={theme} className="w-52 h-60 md:w-64 md:h-72" sizes="(min-width: 768px) 256px, 208px" />
           {p.caption && (
             <p className="mt-3 text-center text-sm" style={{ color: theme.mutedColor, fontFamily: theme.bodyFontResolved }}>
               {p.caption}

@@ -30,7 +30,7 @@ interface Props {
 }
 
 function toPhoto(u: UploadedPhoto): Photo {
-  return { id: u.id, src: u.url, alt: u.name };
+  return { id: u.id, src: u.url, alt: u.name, width: u.width, height: u.height };
 }
 
 function byCategory(uploads: UploadedPhoto[], category: CategoryId): Photo[] {

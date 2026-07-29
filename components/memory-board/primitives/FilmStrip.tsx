@@ -23,6 +23,7 @@ export function FilmStrip({ photos, theme, onOpen, itemClassName }: Props) {
             photo={p}
             theme={theme}
             className="w-full h-full rounded-sm"
+            sizes="(min-width: 640px) 420px, 78vw"
             onClick={onOpen ? () => onOpen(i) : undefined}
           />
         </div>

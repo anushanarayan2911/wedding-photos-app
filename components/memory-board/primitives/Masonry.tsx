@@ -19,6 +19,7 @@ export function Masonry({ photos, theme, onOpen }: Props) {
             theme={theme}
             fill={false}
             className="rounded-sm"
+            sizes="(min-width: 768px) 341px, 50vw"
             onClick={onOpen ? () => onOpen(i) : undefined}
           />
         </div>

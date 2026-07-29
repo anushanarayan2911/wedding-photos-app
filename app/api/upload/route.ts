@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import path from "path";
+import { imageSize } from "image-size";
 import { getUserFromRequest, listPhotos, addPhotos, type PhotoRecord } from "@/lib/auth";
 import { isCategoryId } from "@/components/memory-board/categories";
 import type { UploadedPhoto } from "@/components/memory-board/types";
+
+const FALLBACK_DIMENSIONS = { width: 1600, height: 1200 };
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
@@ -19,7 +22,15 @@ const EXT_BY_TYPE: Record<string, string> = {
 };
 
 function toUploadedPhoto(p: PhotoRecord): UploadedPhoto {
-  return { id: p.id, url: p.url, name: p.name, uploadedAt: p.uploadedAt, category: p.category };
+  return {
+    id: p.id,
+    url: p.url,
+    name: p.name,
+    uploadedAt: p.uploadedAt,
+    category: p.category,
+    width: p.width,
+    height: p.height,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -57,6 +68,15 @@ export async function POST(req: NextRequest) {
     const filename = `${Date.now()}-${randomUUID()}${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(path.join(UPLOAD_DIR, filename), buffer);
+
+    let dimensions: { width: number; height: number } = FALLBACK_DIMENSIONS;
+    try {
+      const { width, height } = imageSize(buffer);
+      if (width && height) dimensions = { width, height };
+    } catch {
+      // Unparseable dimensions (e.g. an exotic HEIC variant) — fall back rather than fail the upload.
+    }
+
     records.push({
       id: filename,
       filename,
@@ -65,6 +85,8 @@ export async function POST(req: NextRequest) {
       category,
       accountId: user.id,
       uploadedAt: new Date().toISOString(),
+      width: dimensions.width,
+      height: dimensions.height,
     });
   }
 

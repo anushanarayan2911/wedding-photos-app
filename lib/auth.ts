@@ -155,6 +155,8 @@ export interface PhotoRecord {
   category: CategoryId;
   accountId: string;
   uploadedAt: string;
+  width: number;
+  height: number;
 }
 
 export async function listPhotos(accountId: string): Promise<PhotoRecord[]> {
