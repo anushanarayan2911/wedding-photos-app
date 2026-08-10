@@ -22,8 +22,7 @@ export function Hero({ theme, containerRef, coupleName, heroImg }: Props) {
     : null;
 
   function scrollToNext() {
-    const next = document.getElementById("welcome") ?? document.getElementById("team-bride");
-    next?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("welcome")?.scrollIntoView({ behavior: "smooth" });
   }
 
   return (

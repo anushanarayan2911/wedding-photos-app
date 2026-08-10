@@ -11,17 +11,6 @@ export interface Photo {
   credit?: "professional" | "guest";
 }
 
-export interface TimelineEvent {
-  time: string;
-  title: string;
-  description: string;
-}
-
-export interface SectionMeta {
-  id: string;
-  label: string;
-}
-
 export interface UploadedPhoto {
   id: string;
   url: string;

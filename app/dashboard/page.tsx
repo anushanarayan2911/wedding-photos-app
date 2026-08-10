@@ -2,70 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { withOpacity, type ExtractedStyles, SESSION_KEY } from "@/lib/theme";
+import { type ExtractedStyles, SESSION_KEY } from "@/lib/theme";
 import { deriveDashboardTheme } from "@/lib/dashboard-theme";
-import { MemoryBoard } from "@/components/memory-board/MemoryBoard";
-import { UploadModal } from "@/components/memory-board/UploadModal";
-import type { UploadedPhoto } from "@/components/memory-board/types";
-import type { CategoryId } from "@/components/memory-board/categories";
-import { cn } from "@/lib/utils";
-
-type NavIconType = "board" | "uploads" | "share" | "settings";
-
-const NAV_ITEMS: { label: string; active: boolean; icon: NavIconType }[] = [
-  { label: "Memory Board", active: true, icon: "board" },
-  { label: "Uploads", active: false, icon: "uploads" },
-  { label: "Share & Invite", active: false, icon: "share" },
-  { label: "Settings", active: false, icon: "settings" },
-];
-
-function NavIcon({ type, className }: { type: NavIconType; className?: string }) {
-  const props = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, className };
-  switch (type) {
-    case "board":
-      return (
-        <svg {...props}>
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <path d="M3 16l4.5-4.5L12 16l3-3 6 6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "uploads":
-      return (
-        <svg {...props}>
-          <path d="M12 16V4M12 4l-4 4M12 4l4 4M5 16v2a2 2 0 002 2h10a2 2 0 002-2v-2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "share":
-      return (
-        <svg {...props}>
-          <circle cx="18" cy="5" r="2.5" />
-          <circle cx="6" cy="12" r="2.5" />
-          <circle cx="18" cy="19" r="2.5" />
-          <path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6" strokeLinecap="round" />
-        </svg>
-      );
-    case "settings":
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-  }
-}
+import { Hero } from "@/components/memory-board/sections/Hero";
+import { Welcome } from "@/components/memory-board/sections/Welcome";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [styles, setStyles] = useState<ExtractedStyles | null>(null);
-  const [uploads, setUploads] = useState<UploadedPhoto[]>([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   const theme = useMemo(() => (styles ? deriveDashboardTheme(styles) : null), [styles]);
@@ -79,37 +23,6 @@ export default function DashboardPage() {
     await fetch("/api/auth/logout", { method: "POST" });
     sessionStorage.removeItem(SESSION_KEY);
     router.push("/login");
-  }
-
-  useEffect(() => {
-    fetch("/api/upload")
-      .then((res) => res.json())
-      .then((data) => setUploads(data.photos ?? []))
-      .catch(() => {});
-  }, []);
-
-  async function handleFiles(fileList: FileList | null, category: CategoryId) {
-    if (!fileList || !fileList.length) return;
-    setIsUploading(true);
-    setUploadError(null);
-    const formData = new FormData();
-    Array.from(fileList).forEach((file) => formData.append("files", file));
-    formData.append("category", category);
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      setUploads((prev) => [...(data.uploaded as UploadedPhoto[]), ...prev]);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setIsUploading(false);
-    }
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>, category: CategoryId) {
-    e.preventDefault();
-    handleFiles(e.dataTransfer.files, category);
   }
 
   useEffect(() => {
@@ -214,190 +127,18 @@ export default function DashboardPage() {
   if (!theme || !styles) return <LoadingScreen />;
 
   const coupleName = styles.pageTitle || "Your Wedding Board";
-  const decorativeImgs = theme.decorativeImgs;
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ fontFamily: theme.bodyFontResolved, color: theme.bodyColor, fontWeight: theme.bodyFontWeight }}
-    >
-      {/* ── Sidebar ── */}
-      <aside
-        className={cn(
-          "flex-shrink-0 flex flex-col h-screen overflow-hidden transition-[width] duration-300 ease-in-out",
-          sidebarCollapsed ? "w-[76px]" : "w-56"
-        )}
-        style={{
-          backgroundColor: theme.sidebarBg,
-          borderRight: `1px solid ${withOpacity(theme.navColor, 0.2)}`,
-        }}
-      >
-        {/* Logo */}
-        <div
-          className={cn("flex items-center py-5", sidebarCollapsed ? "px-2 justify-center" : "px-4 gap-2.5")}
-          style={{ borderBottom: `1px solid ${withOpacity(theme.navColor, 0.2)}` }}
-        >
-          <div className="w-6 h-6 border-2 flex-shrink-0" style={{ borderColor: theme.navColor }} />
-          {!sidebarCollapsed && (
-            <span
-              className="text-xs font-bold tracking-widest uppercase whitespace-nowrap"
-              style={{ color: theme.navColor }}
-            >
-              Memoboard
-            </span>
-          )}
-        </div>
+    <main ref={mainRef} className="relative h-screen overflow-y-auto overflow-x-hidden">
+      <Hero theme={theme} containerRef={mainRef} coupleName={coupleName} heroImg={theme.heroImg} />
+      <Welcome theme={theme} coupleName={coupleName} galleryImgs={theme.galleryImgs} />
 
-        {/* Collapse toggle */}
-        <div
-          className={cn("flex px-3 py-2", sidebarCollapsed ? "justify-center" : "justify-end")}
-          style={{ borderBottom: `1px solid ${withOpacity(theme.navColor, 0.1)}` }}
-        >
-          <button
-            onClick={() => setSidebarCollapsed((c) => !c)}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors hover:opacity-100"
-            style={{ color: theme.navColor, opacity: 0.6 }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className={cn("w-3.5 h-3.5 transition-transform duration-300", sidebarCollapsed && "rotate-180")}
-            >
-              <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 py-5 px-3 space-y-0.5">
-          {NAV_ITEMS.map(({ label, active, icon }) => (
-            <button
-              key={label}
-              onClick={label === "Uploads" ? () => setUploadModalOpen(true) : undefined}
-              title={sidebarCollapsed ? label : undefined}
-              className={cn(
-                "w-full flex items-center rounded-md text-sm text-left transition-colors",
-                sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
-              )}
-              style={
-                active
-                  ? {
-                      color: theme.activeNavColor,
-                      fontWeight: 700,
-                      backgroundColor: theme.navAccentBg,
-                    }
-                  : {
-                      color: theme.navColor,
-                      opacity: 0.65,
-                    }
-              }
-            >
-              <NavIcon type={icon} className="w-4 h-4 flex-shrink-0" />
-              {!sidebarCollapsed && <span className="whitespace-nowrap">{label}</span>}
-            </button>
-          ))}
-        </nav>
-
-        {/* Decorative accent — mirrors how wedding sites use botanical motifs as dividers */}
-        {!sidebarCollapsed && decorativeImgs[0] && (
-          <div className="flex justify-center px-4 py-2">
-            <img
-              src={decorativeImgs[0].url}
-              alt=""
-              aria-hidden
-              className="w-24 h-24 object-contain pointer-events-none select-none"
-              style={{ opacity: 0.22 }}
-              onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-            />
-          </div>
-        )}
-
-        {/* Reset / account */}
-        <div className="px-3 pb-5 space-y-0.5" style={{ borderTop: `1px solid ${theme.borderColor}`, paddingTop: "12px" }}>
-          <button
-            onClick={handleReset}
-            title={sidebarCollapsed ? "Connect new site" : undefined}
-            className={cn(
-              "w-full flex items-center rounded-md text-sm text-left transition-colors hover:opacity-100",
-              sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
-            )}
-            style={{ color: theme.bodyColor, opacity: 0.5 }}
-          >
-            <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">↩</span>
-            {!sidebarCollapsed && <span className="whitespace-nowrap">Connect new site</span>}
-          </button>
-          <button
-            onClick={handleLogout}
-            title={sidebarCollapsed ? "Log out" : undefined}
-            className={cn(
-              "w-full flex items-center rounded-md text-sm text-left transition-colors hover:opacity-100",
-              sidebarCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
-            )}
-            style={{ color: theme.bodyColor, opacity: 0.5 }}
-          >
-            <span className="w-3.5 h-3.5 flex-shrink-0 text-base leading-none">⏻</span>
-            {!sidebarCollapsed && <span className="whitespace-nowrap">Log out</span>}
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Main ── */}
-      <main ref={mainRef} className="relative flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
-        {/* Slim editorial masthead */}
-        <div
-          className="sticky top-0 z-40 flex items-center justify-between px-8 py-4"
-          style={{ borderBottom: `1px solid ${theme.borderColor}`, backgroundColor: theme.contrastBg }}
-        >
-          <p className="text-sm" style={{ color: theme.mutedColor }}>{coupleName}</p>
-
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              className="px-4 py-2 text-sm rounded"
-              style={{
-                border: `1.5px solid ${theme.primaryBtnBg}`,
-                color: theme.primaryBtnBg,
-                backgroundColor: "transparent",
-              }}
-            >
-              Share Board Link
-            </button>
-            <button
-              className="px-4 py-2 text-sm rounded"
-              style={{
-                backgroundColor: theme.primaryBtnBg,
-                color: theme.primaryBtnText,
-              }}
-            >
-              Download All
-            </button>
-          </div>
-        </div>
-
-        {/* The Memory Board experience */}
-        <MemoryBoard
-          theme={theme}
-          coupleName={coupleName}
-          uploads={uploads}
-          mainRef={mainRef}
-        />
-      </main>
-
-      <UploadModal
-        theme={theme}
-        open={uploadModalOpen}
-        onOpenChange={setUploadModalOpen}
-        uploads={uploads}
-        isUploading={isUploading}
-        uploadError={uploadError}
-        fileInputRef={fileInputRef}
-        onFiles={handleFiles}
-        onDrop={handleDrop}
-      />
-    </div>
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-4 text-[11px] uppercase tracking-widest bg-black/40 backdrop-blur-sm text-white/80 px-4 py-2 rounded-full">
+        <button onClick={handleReset} className="hover:text-white transition-colors">Connect a different site</button>
+        <span className="opacity-30">·</span>
+        <button onClick={handleLogout} className="hover:text-white transition-colors">Log out</button>
+      </div>
+    </main>
   );
 }
 
