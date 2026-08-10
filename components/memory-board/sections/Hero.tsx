@@ -21,6 +21,11 @@ export function Hero({ theme, containerRef, coupleName, heroImg }: Props) {
     ? { id: "site-hero", src: heroImg.url, alt: heroImg.alt || coupleName }
     : null;
 
+  function scrollToNext() {
+    const next = document.getElementById("welcome") ?? document.getElementById("team-bride");
+    next?.scrollIntoView({ behavior: "smooth" });
+  }
+
   return (
     <section id="hero" className="relative h-screen w-full overflow-hidden">
       {photo ? (
@@ -36,6 +41,18 @@ export function Hero({ theme, containerRef, coupleName, heroImg }: Props) {
         style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.6))" }}
       />
       <div className="relative h-full flex flex-col items-center justify-center text-center px-6 text-white">
+        {theme.decorativeImgs[0] && (
+          <motion.img
+            src={theme.decorativeImgs[0].url}
+            alt=""
+            aria-hidden
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 0.8, y: 0 }}
+            transition={{ duration: 1, delay: 0.1 }}
+            className="w-14 h-14 object-contain mb-4 pointer-events-none select-none"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        )}
         <motion.p
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 0.85, y: 0 }}
@@ -61,14 +78,17 @@ export function Hero({ theme, containerRef, coupleName, heroImg }: Props) {
         >
           {heroPlaceholder.tagline}
         </motion.p>
-        <motion.div
+        <motion.button
+          type="button"
+          onClick={scrollToNext}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 0.7, y: [0, 8, 0] }}
+          animate={{ opacity: 1, y: [0, 6, 0] }}
           transition={{ opacity: { duration: 1, delay: 1.2 }, y: { duration: 1.8, repeat: Infinity, ease: "easeInOut" } }}
-          className="absolute bottom-10 text-xs tracking-[0.3em] uppercase"
+          className="absolute bottom-10 text-xs tracking-[0.3em] uppercase px-5 py-2.5 rounded-full"
+          style={{ backgroundColor: theme.primaryBtnBg, color: theme.primaryBtnText }}
         >
-          Scroll to relive the day ↓
-        </motion.div>
+          Relive the Day ↓
+        </motion.button>
       </div>
     </section>
   );

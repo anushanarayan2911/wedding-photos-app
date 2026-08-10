@@ -28,6 +28,8 @@ export interface DashboardTheme {
   bodyFontWeight: string | undefined;
   heroImg: KeyImage | undefined;
   decorativeImgs: KeyImage[];
+  /** Real photos from the linked site beyond the single hero shot — recreates the photo-collage "welcome" fold most wedding landing pages show right after the hero. */
+  galleryImgs: KeyImage[];
   /** Near-white/cream surface for polaroid mattes, quote/story cards — independent of mainBg, which is often undefined when a hero image is present. */
   paperBg: string;
   /** Soft tint of the primary accent, for section eyebrows/badges. */
@@ -131,6 +133,9 @@ export function deriveDashboardTheme(styles: ExtractedStyles): DashboardTheme {
     ?? keyImages.find(img => img.context === "featured" || img.context === "hero")
     ?? keyImages.find(img => img.context === "background");
   const decorativeImgs = keyImages.filter(img => img.context === "decorative");
+  const galleryImgs = keyImages.filter(img =>
+    img.url !== heroImg?.url && img.context !== "decorative" && img.context !== "background"
+  );
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
   const bgsByLuminance = [...backgroundColors].sort((a, b) => getLuminance(b) - getLuminance(a));
@@ -207,7 +212,7 @@ export function deriveDashboardTheme(styles: ExtractedStyles): DashboardTheme {
     h1Font, h2Font, h3Font, h4Font,
     h1FontWeight, h2FontWeight, h3FontWeight, h4FontWeight,
     bodyFontResolved, bodyFontWeight,
-    heroImg, decorativeImgs,
+    heroImg, decorativeImgs, galleryImgs,
     paperBg, accentSoft,
   };
 }

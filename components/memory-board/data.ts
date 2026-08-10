@@ -20,11 +20,11 @@ export const dayTimeline: TimelineEvent[] = [
 // ── Section order + progress-rail labels ───────────────────────────────────
 export const SECTION_META: SectionMeta[] = [
   { id: "hero", label: "Begin" },
+  { id: "welcome", label: "Welcome" },
   { id: "team-bride", label: "Team Bride" },
   { id: "team-groom", label: "Team Groom" },
   { id: "ceremony", label: "Ceremony" },
   { id: "couple", label: "The Couple" },
   { id: "party", label: "The Party" },
-  { id: "add-photos", label: "Add Photos" },
   { id: "ending", label: "The End" },
 ];

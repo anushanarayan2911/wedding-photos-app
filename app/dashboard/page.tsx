@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { withOpacity, type ExtractedStyles, SESSION_KEY } from "@/lib/theme";
 import { deriveDashboardTheme } from "@/lib/dashboard-theme";
 import { MemoryBoard } from "@/components/memory-board/MemoryBoard";
+import { UploadModal } from "@/components/memory-board/UploadModal";
 import type { UploadedPhoto } from "@/components/memory-board/types";
 import type { CategoryId } from "@/components/memory-board/categories";
 import { cn } from "@/lib/utils";
@@ -60,9 +61,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const [styles, setStyles] = useState<ExtractedStyles | null>(null);
   const [uploads, setUploads] = useState<UploadedPhoto[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -78,6 +80,13 @@ export default function DashboardPage() {
     sessionStorage.removeItem(SESSION_KEY);
     router.push("/login");
   }
+
+  useEffect(() => {
+    fetch("/api/upload")
+      .then((res) => res.json())
+      .then((data) => setUploads(data.photos ?? []))
+      .catch(() => {});
+  }, []);
 
   async function handleFiles(fileList: FileList | null, category: CategoryId) {
     if (!fileList || !fileList.length) return;
@@ -102,13 +111,6 @@ export default function DashboardPage() {
     e.preventDefault();
     handleFiles(e.dataTransfer.files, category);
   }
-
-  useEffect(() => {
-    fetch("/api/upload")
-      .then((res) => res.json())
-      .then((data) => setUploads(data.photos ?? []))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     function applyStyles(parsed: ExtractedStyles) {
@@ -275,6 +277,7 @@ export default function DashboardPage() {
           {NAV_ITEMS.map(({ label, active, icon }) => (
             <button
               key={label}
+              onClick={label === "Uploads" ? () => setUploadModalOpen(true) : undefined}
               title={sidebarCollapsed ? label : undefined}
               className={cn(
                 "w-full flex items-center rounded-md text-sm text-left transition-colors",
@@ -379,14 +382,21 @@ export default function DashboardPage() {
           theme={theme}
           coupleName={coupleName}
           uploads={uploads}
-          isUploading={isUploading}
-          uploadError={uploadError}
-          fileInputRef={fileInputRef}
-          onFiles={handleFiles}
-          onDrop={handleDrop}
           mainRef={mainRef}
         />
       </main>
+
+      <UploadModal
+        theme={theme}
+        open={uploadModalOpen}
+        onOpenChange={setUploadModalOpen}
+        uploads={uploads}
+        isUploading={isUploading}
+        uploadError={uploadError}
+        fileInputRef={fileInputRef}
+        onFiles={handleFiles}
+        onDrop={handleDrop}
+      />
     </div>
   );
 }

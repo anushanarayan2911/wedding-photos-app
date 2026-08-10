@@ -5,12 +5,12 @@ import { LightboxProvider } from "./lightbox-context";
 import { useActiveSection } from "./use-active-section";
 import { ScrollProgress } from "./primitives/ScrollProgress";
 import { Hero } from "./sections/Hero";
+import { Welcome } from "./sections/Welcome";
 import { TeamBride } from "./sections/TeamBride";
 import { TeamGroom } from "./sections/TeamGroom";
 import { Ceremony } from "./sections/Ceremony";
 import { TheCouple } from "./sections/TheCouple";
 import { TheParty } from "./sections/TheParty";
-import { AddPhotos } from "./sections/AddPhotos";
 import { Ending } from "./sections/Ending";
 import { SECTION_META } from "./data";
 import type { DashboardTheme } from "@/lib/dashboard-theme";
@@ -21,11 +21,6 @@ interface Props {
   theme: DashboardTheme;
   coupleName: string;
   uploads: UploadedPhoto[];
-  isUploading: boolean;
-  uploadError: string | null;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onFiles: (files: FileList | null, category: CategoryId) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>, category: CategoryId) => void;
   mainRef: RefObject<HTMLElement | null>;
 }
 
@@ -42,11 +37,6 @@ export function MemoryBoard({
   theme,
   coupleName,
   uploads,
-  isUploading,
-  uploadError,
-  fileInputRef,
-  onFiles,
-  onDrop,
   mainRef,
 }: Props) {
   const activeId = useActiveSection(
@@ -63,20 +53,12 @@ export function MemoryBoard({
           total content height exceeds the viewport. */}
       <div>
         <Hero theme={theme} containerRef={mainRef} coupleName={coupleName} heroImg={theme.heroImg} />
+        <Welcome theme={theme} coupleName={coupleName} galleryImgs={theme.galleryImgs} />
         <TeamBride theme={theme} photos={byCategory(uploads, "team-bride")} />
         <TeamGroom theme={theme} photos={byCategory(uploads, "team-groom")} />
         <Ceremony theme={theme} photos={byCategory(uploads, "ceremony")} />
         <TheCouple theme={theme} photos={byCategory(uploads, "couple")} />
         <TheParty theme={theme} photos={byCategory(uploads, "party")} />
-        <AddPhotos
-          theme={theme}
-          uploads={uploads}
-          isUploading={isUploading}
-          uploadError={uploadError}
-          fileInputRef={fileInputRef}
-          onFiles={onFiles}
-          onDrop={onDrop}
-        />
         <Ending theme={theme} coupleName={coupleName} />
       </div>
     </LightboxProvider>
