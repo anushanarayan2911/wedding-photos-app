@@ -18,5 +18,9 @@ Thumbs.db
 public/uploads/*
 !public/uploads/.gitkeep
 
+# Captured landing-page screenshots
+public/site-screenshots/*
+!public/site-screenshots/.gitkeep
+
 # Local account/session store (contains password hashes — never commit)
 .data/

@@ -23,7 +23,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not log in");
-      router.push(data.hasStyles ? "/dashboard" : "/");
+      router.push(data.hasSite ? "/dashboard" : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setLoading(false);

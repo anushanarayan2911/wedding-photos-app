@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
-import type { ExtractedStyles } from "./theme";
+import type { SiteSnapshot } from "./site-snapshot";
 import type { CategoryId } from "@/components/memory-board/categories";
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export interface User {
   passwordHash: string;
   passwordSalt: string;
   createdAt: string;
-  styles: ExtractedStyles | null;
+  site: SiteSnapshot | null;
 }
 
 interface SessionRecord {
@@ -81,7 +81,7 @@ export async function createUser(email: string, password: string): Promise<User>
     passwordHash,
     passwordSalt,
     createdAt: new Date().toISOString(),
-    styles: null,
+    site: null,
   };
 
   users.push(user);
@@ -104,11 +104,11 @@ export async function getUserById(id: string): Promise<User | null> {
   return users.find((u) => u.id === id) ?? null;
 }
 
-export async function saveUserStyles(id: string, styles: ExtractedStyles): Promise<void> {
+export async function saveUserSite(id: string, site: SiteSnapshot): Promise<void> {
   const users = await readJson<User[]>(USERS_FILE, []);
   const index = users.findIndex((u) => u.id === id);
   if (index === -1) throw new AuthError("Account not found");
-  users[index].styles = styles;
+  users[index].site = site;
   await writeJson(USERS_FILE, users);
 }
 

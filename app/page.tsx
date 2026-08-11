@@ -2,47 +2,15 @@
 
 import { useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
-import StylePreview from "@/components/StylePreview";
-
-interface FontResult {
-  family: string;
-  category: string;
-}
-
-interface ElementStyle {
-  selector: string;
-  fontFamily?: string;
-  color?: string;
-  backgroundColor?: string;
-  borderColor?: string;
-  fontSize?: string;
-  fontWeight?: string;
-}
-
-interface KeyImage {
-  url: string;
-  alt?: string;
-  context: string;
-}
-
-interface ExtractResult {
-  backgroundColors: string[];
-  textColors: string[];
-  accentColors: string[];
-  fonts: FontResult[];
-  googleFontsLinks: string[];
-  elementStyles: ElementStyle[];
-  keyImages?: KeyImage[];
-  pageTitle: string;
-  url: string;
-}
+import SiteSnapshotPreview from "@/components/SiteSnapshotPreview";
+import type { SiteSnapshot } from "@/lib/site-snapshot";
 
 type Status = "idle" | "loading" | "success" | "error";
 
 export default function SyncPage() {
   const [inputUrl, setInputUrl] = useState("");
   const [status, setStatus] = useState<Status>("idle");
-  const [result, setResult] = useState<ExtractResult | null>(null);
+  const [result, setResult] = useState<SiteSnapshot | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
 
@@ -61,7 +29,7 @@ export default function SyncPage() {
     setErrorMsg("");
 
     try {
-      const res = await fetch("/api/extract-styles", {
+      const res = await fetch("/api/screenshot-site", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: inputUrl.trim() }),
@@ -91,17 +59,17 @@ export default function SyncPage() {
             <Step
               number={1}
               heading="Paste your wedding website URL"
-              body="We'll scan your site for design elements."
+              body="We'll capture your site's landing page."
             />
             <Step
               number={2}
-              heading="We detect your design language"
-              body="Fonts, colors, and textures are extracted."
+              heading="We take a screenshot of your site"
+              body="Your real landing page, captured exactly as it looks."
             />
             <Step
               number={3}
-              heading="Your board auto-matches style"
-              body="Everything stays perfectly on-brand."
+              heading="Your board opens with your site"
+              body="An exact recreation, not an approximation."
             />
           </ol>
         </div>
@@ -144,7 +112,7 @@ export default function SyncPage() {
                   disabled={status === "loading" || isLoggedIn === null}
                   className="w-full bg-black text-white font-mono py-3 rounded hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {status === "loading" ? "Scanning…" : "Connect Site"}
+                  {status === "loading" ? "Capturing your site…" : "Connect Site"}
                 </button>
               </form>
 
@@ -153,7 +121,7 @@ export default function SyncPage() {
               )}
 
               {(status === "success" || status === "loading") && (
-                <StylePreview result={result} loading={status === "loading"} />
+                <SiteSnapshotPreview result={result} loading={status === "loading"} />
               )}
             </>
           )}
