@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
   try {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
+    await page.goto(url, { waitUntil: "load", timeout: 30000 });
+    await page.waitForTimeout(1500);
 
     const rawTitle = await page.title();
     const pageTitle = rawTitle.split(/[|\-–—]/)[0].trim();
