@@ -25,6 +25,20 @@ export async function POST(req: NextRequest) {
     await page.goto(url, { waitUntil: "load", timeout: 30000 });
     await page.waitForTimeout(1500);
 
+    // Drop the site's own nav/header bar so the recreated page starts at its content.
+    await page.evaluate(() => {
+      const selectors = [
+        "nav",
+        '[role="navigation"]',
+        "header nav",
+        ".navbar",
+        ".nav-bar",
+        ".site-header",
+        ".site-nav",
+      ];
+      document.querySelectorAll(selectors.join(",")).forEach((el) => el.remove());
+    });
+
     const rawTitle = await page.title();
     const pageTitle = rawTitle.split(/[|\-–—]/)[0].trim();
 
