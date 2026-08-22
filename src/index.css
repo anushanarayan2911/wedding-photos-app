@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-mono);
+}
