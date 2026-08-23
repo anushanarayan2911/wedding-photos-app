@@ -1,0 +1,1 @@
+Design Language: A design language is a cohesive set of rules, styles, and visual elements—such as colors, shapes, typography, and interactive behaviors—that guide how products or spaces are built. It acts as a unified vocabulary, ensuring that different items or screens share a recognizable, harmonious identity

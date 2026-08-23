@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Step from './Step'
 
 const STEPS = [
@@ -16,10 +16,45 @@ const STEPS = [
   },
 ]
 
-const SWATCH_COUNT = 4
+interface DesignLanguage {
+  colors: string[]
+  font: { family: string; category: string } | null
+}
+
+type Status = 'idle' | 'loading' | 'success' | 'error'
 
 export default function SyncBoard() {
   const [url, setUrl] = useState('')
+  const [status, setStatus] = useState<Status>('idle')
+  const [result, setResult] = useState<DesignLanguage | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault()
+    if (!url.trim()) return
+
+    setStatus('loading')
+    setErrorMessage('')
+
+    try {
+      const response = await fetch('/api/design-language', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error ?? 'Something went wrong.')
+      }
+
+      setResult(data)
+      setStatus('success')
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong.')
+      setStatus('error')
+    }
+  }
 
   return (
     <section className="grid gap-16 px-10 py-14 md:grid-cols-2">
@@ -34,46 +69,75 @@ export default function SyncBoard() {
       </div>
 
       <div>
-        <label htmlFor="site-url" className="mb-2 block text-sm">
-          Wedding Website URL
-        </label>
-        <input
-          id="site-url"
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://withjoy.com/sarah-and-james"
-          className="mb-4 w-full rounded-md border border-gray-300 px-4 py-3 text-sm outline-none focus:border-black"
-        />
-
-        <button
-          type="button"
-          className="mb-8 w-full rounded-md bg-black py-3 text-sm font-bold text-white"
-        >
-          Connect Site
-        </button>
-
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-6">
-          <h2 className="mb-4 text-sm font-bold tracking-wide">STYLE PREVIEW</h2>
-          <p className="mb-3 text-sm text-gray-500">Colors, fonts &amp; patterns detected:</p>
-
-          <div className="mb-4 flex gap-2">
-            {Array.from({ length: SWATCH_COUNT }).map((_, i) => (
-              <div key={i} className="h-10 w-10 rounded-md bg-gray-300" />
-            ))}
-          </div>
-
-          <div className="mb-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm font-bold">
-            Baskerville &middot; Serif
-          </div>
+        <form onSubmit={handleConnect}>
+          <label htmlFor="site-url" className="mb-2 block text-sm">
+            Wedding Website URL
+          </label>
+          <input
+            id="site-url"
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://withjoy.com/sarah-and-james"
+            className="mb-4 w-full rounded-md border border-gray-300 px-4 py-3 text-sm outline-none focus:border-black"
+          />
 
           <button
-            type="button"
-            className="w-full rounded-md border border-black bg-white py-3 text-sm font-bold"
+            type="submit"
+            disabled={status === 'loading'}
+            className="mb-8 w-full rounded-md bg-black py-3 text-sm font-bold text-white disabled:opacity-50"
           >
-            Looks good, continue
+            {status === 'loading' ? 'Connecting…' : 'Connect Site'}
           </button>
-        </div>
+        </form>
+
+        {status === 'error' && (
+          <p className="mb-4 text-sm text-red-600">{errorMessage}</p>
+        )}
+
+        {(status === 'loading' || status === 'success') && (
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-6">
+            <h2 className="mb-4 text-sm font-bold tracking-wide">STYLE PREVIEW</h2>
+            <p className="mb-3 text-sm text-gray-500">Colors, fonts &amp; patterns detected:</p>
+
+            <div className="mb-4 flex gap-2">
+              {status === 'loading' &&
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-10 w-10 animate-pulse rounded-md bg-gray-300" />
+                ))}
+
+              {status === 'success' && result && result.colors.length > 0 &&
+                result.colors.map((color) => (
+                  <div
+                    key={color}
+                    title={color}
+                    className="h-10 w-10 rounded-md border border-gray-200"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+
+              {status === 'success' && result && result.colors.length === 0 && (
+                <p className="text-sm text-gray-400">No brand colors detected.</p>
+              )}
+            </div>
+
+            <div className="mb-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm font-bold">
+              {status === 'loading' && 'Detecting font…'}
+              {status === 'success' &&
+                (result?.font
+                  ? `${result.font.family} · ${result.font.category}`
+                  : 'No font detected')}
+            </div>
+
+            <button
+              type="button"
+              disabled={status === 'loading'}
+              className="w-full rounded-md border border-black bg-white py-3 text-sm font-bold disabled:opacity-50"
+            >
+              Looks good, continue
+            </button>
+          </div>
+        )}
       </div>
     </section>
   )
