@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import Step from './Step'
+import type { DesignLanguageResult } from '../types'
 
 const STEPS = [
   {
@@ -16,17 +17,16 @@ const STEPS = [
   },
 ]
 
-interface DesignLanguage {
-  colors: string[]
-  font: { family: string; category: string } | null
-}
-
 type Status = 'idle' | 'loading' | 'success' | 'error'
 
-export default function SyncBoard() {
+interface SyncBoardProps {
+  onContinue: (data: DesignLanguageResult) => void
+}
+
+export default function SyncBoard({ onContinue }: SyncBoardProps) {
   const [url, setUrl] = useState('')
   const [status, setStatus] = useState<Status>('idle')
-  const [result, setResult] = useState<DesignLanguage | null>(null)
+  const [result, setResult] = useState<DesignLanguageResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
 
   async function handleConnect(e: FormEvent) {
@@ -131,7 +131,8 @@ export default function SyncBoard() {
 
             <button
               type="button"
-              disabled={status === 'loading'}
+              disabled={status !== 'success' || !result}
+              onClick={() => result && onContinue(result)}
               className="w-full rounded-md border border-black bg-white py-3 text-sm font-bold disabled:opacity-50"
             >
               Looks good, continue
