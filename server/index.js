@@ -3,6 +3,20 @@ import * as cheerio from 'cheerio'
 
 const PORT = process.env.PORT || 3001
 
+// Some sites' servers close connections in ways that trip an internal
+// assertion in Node's fetch implementation (undici), which throws outside any
+// promise chain we control and would otherwise crash this whole process —
+// taking every other in-flight request down with it. This is a stateless
+// proxy (no per-request state survives a request), so logging and staying up
+// is the right tradeoff over letting one bad site poison the server for
+// everyone else.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaught exception]', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandled rejection]', reason)
+})
+
 const GENERIC_FONT_KEYWORDS = new Set([
   'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
   'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'inherit',
@@ -22,7 +36,32 @@ const IGNORED_COLORS = new Set([
 
 const MONTHS_FULL = 'January|February|March|April|May|June|July|August|September|October|November|December'
 const MONTHS_ABBR = 'Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec'
-const DATE_REGEX = new RegExp(`\\b(?:${MONTHS_FULL}|${MONTHS_ABBR})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`, 'i')
+const ANY_MONTH = `(?:${MONTHS_FULL}|${MONTHS_ABBR})`
+
+// "Month Day, Year" — June 22, 2025 / Jun. 22, 2025
+const DATE_REGEX_MONTH_FIRST = new RegExp(`\\b${ANY_MONTH}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`, 'i')
+// "Day [of] Month[,] Year" — 22nd of June, 2025 / 22 June 2025
+const DATE_REGEX_DAY_FIRST = new RegExp(
+  `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${ANY_MONTH})\\.?,?\\s+(\\d{4})\\b`,
+  'i',
+)
+
+const MONTH_INDEX = new Map([
+  ['january', 0], ['jan', 0],
+  ['february', 1], ['feb', 1],
+  ['march', 2], ['mar', 2],
+  ['april', 3], ['apr', 3],
+  ['may', 4],
+  ['june', 5], ['jun', 5],
+  ['july', 6], ['jul', 6],
+  ['august', 7], ['aug', 7],
+  ['september', 8], ['sept', 8], ['sep', 8],
+  ['october', 9], ['oct', 9],
+  ['november', 10], ['nov', 10],
+  ['december', 11], ['dec', 11],
+])
+// Numeric MM/DD/YYYY or MM.DD.YYYY (US convention — ambiguous with DD/MM elsewhere, but MM/DD is by far the common case on US wedding sites)
+const DATE_REGEX_NUMERIC = /\b(0?[1-9]|1[0-2])[/.](0?[1-9]|[12]\d|3[01])[/.](\d{4})\b/
 
 const NAME_STOPWORDS = new Set(['terms', 'conditions', 'privacy', 'faq', 'q', 'help', 'contact', 'copyright'])
 
@@ -141,40 +180,125 @@ function resolveVarTokens(tokens, vars, depth = 0) {
   return resolved
 }
 
-function extractFont(css) {
-  const cssVars = extractCssVariables(css)
-  const declarations = css.match(/font-family\s*:\s*([^;{}]+)/gi) || []
-  const primaryCounts = new Map()
-  const categoryByFont = new Map()
+const FORMAT_PRIORITY = ['woff2', 'woff', 'truetype', 'ttf', 'opentype', 'otf']
 
-  for (const decl of declarations) {
-    const value = decl.replace(/font-family\s*:\s*/i, '')
-    const tokens = resolveVarTokens(toTokens(value), cssVars)
-    if (tokens.length === 0) continue
+// Most real sites self-host or license their fonts rather than use Google Fonts,
+// so knowing the font *name* alone usually isn't enough to render it accurately.
+// @font-face rules point straight at the actual font file, which we can load
+// client-side instead of falling back to a generic serif/sans-serif look.
+function extractFontFaces(css, baseUrl) {
+  const map = new Map()
+  const blocks = css.match(/@font-face\s*{[^}]*}/gi) || []
 
-    const primary = tokens.find(
-      (t) => !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) && !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()),
-    )
-    if (!primary) continue
+  for (const block of blocks) {
+    const familyMatch = block.match(/font-family\s*:\s*(?:"([^"]+)"|'([^']+)'|([^;]+));/i)
+    const srcMatch = block.match(/src\s*:\s*([^;]+);/i)
+    if (!familyMatch || !srcMatch) continue
 
-    primaryCounts.set(primary, (primaryCounts.get(primary) || 0) + 1)
+    const family = (familyMatch[1] || familyMatch[2] || familyMatch[3]).trim()
+    const urls = [...srcMatch[1].matchAll(/url\(\s*(?:"([^"]+)"|'([^']+)'|([^)]+))\s*\)(?:\s*format\(\s*(?:"([^"]+)"|'([^']+)')\s*\))?/gi)]
+      .map((m) => {
+        const rawUrl = (m[1] || m[2] || m[3] || '').trim()
+        const format = (m[4] || m[5] || '').toLowerCase()
+        try {
+          return { url: new URL(rawUrl, baseUrl).toString(), format }
+        } catch {
+          return null
+        }
+      })
+      .filter(Boolean)
 
-    const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
-    if (generic && !categoryByFont.has(primary)) {
-      categoryByFont.set(primary, generic)
-    }
+    if (urls.length === 0) continue
+
+    const key = family.toLowerCase()
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(...urls)
   }
 
-  const sorted = [...primaryCounts.entries()].sort((a, b) => b[1] - a[1])
-  if (sorted.length === 0) return null
+  return map
+}
 
-  const [family] = sorted[0]
-  const generic = categoryByFont.get(family)
-  const category = generic
+function bestFontSrc(faces) {
+  for (const format of FORMAT_PRIORITY) {
+    const match = faces.find((f) => f.format === format)
+    if (match) return match.url
+  }
+  return faces[0]?.url ?? null
+}
+
+function categoryFromGeneric(generic) {
+  return generic
     ? generic.replace('ui-', '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
     : 'Sans Serif'
+}
 
-  return { family, category }
+function primaryAndCategoryFromTokens(tokens) {
+  const primary = tokens.find(
+    (t) => !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) && !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()),
+  )
+  if (!primary) return null
+  const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
+  return { family: primary, category: categoryFromGeneric(generic) }
+}
+
+// Big page-builder platforms (Wix and others following the same convention)
+// expose separate font tokens per text role — body vs. heading/title — as CSS
+// custom properties. The heading font is a much stronger "brand font" signal
+// than raw frequency: a site's component framework can reference its body
+// font thousands of times (once per button, tooltip, avatar, ...), which
+// would otherwise drown out a deliberately different, more distinctive
+// heading font in a plain frequency count.
+function findHeadingFont(cssVars) {
+  const names = [...cssVars.keys()]
+  const key =
+    names.find((name) => /title/i.test(name) && /family$/i.test(name)) ??
+    names.find((name) => /heading/i.test(name) && /family$/i.test(name))
+  if (!key) return null
+
+  const tokens = resolveVarTokens(toTokens(cssVars.get(key)), cssVars)
+  return primaryAndCategoryFromTokens(tokens)
+}
+
+function extractFont(css, baseUrl) {
+  const cssVars = extractCssVariables(css)
+
+  let result = findHeadingFont(cssVars)
+
+  if (!result) {
+    const declarations = css.match(/font-family\s*:\s*([^;{}]+)/gi) || []
+    const primaryCounts = new Map()
+    const categoryByFont = new Map()
+
+    for (const decl of declarations) {
+      const value = decl.replace(/font-family\s*:\s*/i, '')
+      const tokens = resolveVarTokens(toTokens(value), cssVars)
+      if (tokens.length === 0) continue
+
+      const primary = tokens.find(
+        (t) => !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) && !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()),
+      )
+      if (!primary) continue
+
+      primaryCounts.set(primary, (primaryCounts.get(primary) || 0) + 1)
+
+      const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
+      if (generic && !categoryByFont.has(primary)) {
+        categoryByFont.set(primary, generic)
+      }
+    }
+
+    const sorted = [...primaryCounts.entries()].sort((a, b) => b[1] - a[1])
+    if (sorted.length === 0) return null
+
+    const [family] = sorted[0]
+    result = { family, category: categoryFromGeneric(categoryByFont.get(family)) }
+  }
+
+  const fontFaces = extractFontFaces(css, baseUrl)
+  const faces = fontFaces.get(result.family.toLowerCase())
+  const src = faces ? bestFontSrc(faces) : null
+
+  return src ? { ...result, src } : result
 }
 
 // --- couple info --------------------------------------------------------
@@ -191,21 +315,85 @@ function getVisibleText($, limit = 20000) {
   return decoded.slice(0, limit)
 }
 
+// Many site builders (Squarespace, custom Next.js sites, etc.) embed
+// schema.org structured data for SEO/social previews — an Event block there
+// is a far more reliable source than scraping visible text, when present.
+function extractJsonLdEvent($) {
+  const items = []
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    let parsed
+    try {
+      parsed = JSON.parse($(el).text())
+    } catch {
+      return
+    }
+    const entries = Array.isArray(parsed) ? parsed : [parsed]
+    for (const entry of entries) {
+      if (entry && Array.isArray(entry['@graph'])) items.push(...entry['@graph'])
+      else if (entry) items.push(entry)
+    }
+  })
+
+  return (
+    items.find((item) => {
+      const type = item?.['@type']
+      const types = Array.isArray(type) ? type : [type]
+      return types.some((t) => typeof t === 'string' && /event/i.test(t))
+    }) ?? null
+  )
+}
+
+// Reads the calendar date directly out of the ISO string rather than round-tripping
+// through a full Date parse — a datetime like "2025-06-22T16:00:00-07:00" represents
+// June 22 wherever the event actually is, but new Date(iso).toLocaleDateString()
+// reinterprets it in *this server's* local timezone, which can silently shift it to
+// the next (or previous) calendar day depending on where the process happens to run.
+function formatIsoDate(iso) {
+  const dateOnly = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly
+    const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  }
+
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+// Strips a trailing month name that bled in from an adjacent element — e.g. a
+// "Jordan" name sitting right next to a "September 6, 2025" date, once
+// flattened to plain text, can otherwise get read as "Jordan September".
+function stripTrailingMonth(name) {
+  const words = name.trim().split(/\s+/)
+  if (words.length > 1 && new RegExp(`^${ANY_MONTH}$`, 'i').test(words[words.length - 1])) {
+    words.pop()
+  }
+  return words.join(' ')
+}
+
 function extractCoupleNamesFromText(text) {
   const namePart = "[A-Z][a-zA-Z'.-]+(?:\\s+[A-Z][a-zA-Z'.-]+){0,2}"
 
-  const weddingOf = text.match(new RegExp(`wedding\\s+of\\s+(${namePart})\\s+(?:and|&)\\s+(${namePart})`, 'i'))
-  if (weddingOf) return `${weddingOf[1]} & ${weddingOf[2]}`
+  const weddingOf = text.match(new RegExp(`wedding\\s+of\\s+(${namePart})\\s+(?:and|&|\\+)\\s+(${namePart})`, 'i'))
+  if (weddingOf) return `${stripTrailingMonth(weddingOf[1])} & ${stripTrailingMonth(weddingOf[2])}`
 
-  const ampersand = text.slice(0, 3000).match(new RegExp(`\\b(${namePart})\\s+&\\s+(${namePart})\\b`))
-  if (ampersand && !NAME_STOPWORDS.has(ampersand[1].toLowerCase()) && !NAME_STOPWORDS.has(ampersand[2].toLowerCase())) {
-    return `${ampersand[1]} & ${ampersand[2]}`
+  const conjunction = text.slice(0, 3000).match(new RegExp(`\\b(${namePart})\\s+(?:&|\\+)\\s+(${namePart})\\b`))
+  if (conjunction && !NAME_STOPWORDS.has(conjunction[1].toLowerCase()) && !NAME_STOPWORDS.has(conjunction[2].toLowerCase())) {
+    return `${stripTrailingMonth(conjunction[1])} & ${stripTrailingMonth(conjunction[2])}`
   }
 
   return null
 }
 
-function extractCoupleNames($, bodyText) {
+function extractCoupleNames($, bodyText, jsonLdEvent) {
+  if (jsonLdEvent?.name) {
+    const fromJsonLd = extractCoupleNamesFromText(String(jsonLdEvent.name))
+    if (fromJsonLd) return fromJsonLd
+  }
+
   const candidates = [
     $('meta[property="og:title"]').attr('content'),
     $('meta[name="twitter:title"]').attr('content'),
@@ -218,8 +406,8 @@ function extractCoupleNames($, bodyText) {
   for (const candidate of candidates) {
     const segments = candidate.split(/[|\-–—]/).map((s) => s.trim()).filter(Boolean)
     for (const segment of segments) {
-      if (segment.length < 60 && /\s&\s|\band\b/i.test(segment)) {
-        return segment.replace(/\s+and\s+/i, ' & ')
+      if (segment.length < 60 && /\s&\s|\s\+\s|\band\b/i.test(segment)) {
+        return segment.replace(/\s+and\s+/i, ' & ').replace(/\s+\+\s+/, ' & ')
       }
     }
   }
@@ -227,13 +415,16 @@ function extractCoupleNames($, bodyText) {
   return extractCoupleNamesFromText(bodyText)
 }
 
-function extractDate($, bodyText) {
+function extractDate($, bodyText, jsonLdEvent) {
+  if (jsonLdEvent?.startDate) {
+    const formatted = formatIsoDate(jsonLdEvent.startDate)
+    if (formatted) return formatted
+  }
+
   const timeAttr = $('time[datetime]').first().attr('datetime')
   if (timeAttr) {
-    const parsed = new Date(timeAttr)
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    }
+    const formatted = formatIsoDate(timeAttr)
+    if (formatted) return formatted
   }
 
   const candidates = [
@@ -244,25 +435,48 @@ function extractDate($, bodyText) {
   ].filter(Boolean)
 
   for (const text of candidates) {
-    const match = text.match(DATE_REGEX)
-    if (match) return match[0].replace(/(\d)(st|nd|rd|th)/i, '$1')
+    const monthFirst = text.match(DATE_REGEX_MONTH_FIRST)
+    if (monthFirst) return monthFirst[0].replace(/(\d)(st|nd|rd|th)/i, '$1')
+
+    const dayFirst = text.match(DATE_REGEX_DAY_FIRST)
+    if (dayFirst) {
+      const [, day, monthName, year] = dayFirst
+      const monthIndex = MONTH_INDEX.get(monthName.toLowerCase())
+      if (monthIndex !== undefined) {
+        const formatted = formatIsoDate(`${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`)
+        if (formatted) return formatted
+      }
+    }
+
+    const numeric = text.match(DATE_REGEX_NUMERIC)
+    if (numeric) {
+      const [, month, day, year] = numeric
+      const formatted = formatIsoDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T12:00:00`)
+      if (formatted) return formatted
+    }
   }
 
   return null
 }
 
-function extractTagline($) {
-  const value = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content')
-  return value ? value.trim() : null
+function extractTagline($, jsonLdEvent) {
+  const value =
+    $('meta[property="og:description"]').attr('content') ||
+    $('meta[name="description"]').attr('content') ||
+    jsonLdEvent?.description
+  return value ? String(value).trim() : null
 }
 
 // --- fetching -------------------------------------------------------------
 
-async function fetchText(url) {
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MemoBoardDesignBot/1.0)' },
-    signal: AbortSignal.timeout(10000),
-  })
+// A Referer matters here — some sites 404 their own stylesheet/font endpoints
+// when requested without one, to discourage hotlinking (e.g. Apple's dynamic
+// SF Pro font-face CSS).
+async function fetchText(url, referer) {
+  const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; MemoBoardDesignBot/1.0)' }
+  if (referer) headers.Referer = referer
+
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })
   if (!response.ok) throw new Error(`Request failed: ${response.status}`)
   return response.text()
 }
@@ -297,19 +511,20 @@ app.post('/api/design-language', async (req, res) => {
       .slice(0, 5)
 
     const stylesheets = await Promise.allSettled(
-      stylesheetLinks.map((href) => fetchText(new URL(href, target).toString())),
+      stylesheetLinks.map((href) => fetchText(new URL(href, target).toString(), target.toString())),
     )
     for (const result of stylesheets) {
       if (result.status === 'fulfilled') css += `\n${result.value}`
     }
 
     const colors = extractColors(css).slice(0, 6)
-    const font = extractFont(css)
+    const font = extractFont(css, target.toString())
     const bodyText = getVisibleText($)
+    const jsonLdEvent = extractJsonLdEvent($)
     const couple = {
-      names: extractCoupleNames($, bodyText),
-      date: extractDate($, bodyText),
-      tagline: extractTagline($),
+      names: extractCoupleNames($, bodyText, jsonLdEvent),
+      date: extractDate($, bodyText, jsonLdEvent),
+      tagline: extractTagline($, jsonLdEvent),
     }
 
     res.json({ colors, font, couple })

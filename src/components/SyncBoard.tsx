@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import Step from './Step'
 import type { DesignLanguageResult } from '../types'
+import { toCssFontFamily } from '../lib/font'
+import { useDesignFont } from '../hooks/useDesignFont'
 
 const STEPS = [
   {
@@ -29,6 +31,8 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
   const [result, setResult] = useState<DesignLanguageResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
 
+  useDesignFont(result?.font)
+
   async function handleConnect(e: FormEvent) {
     e.preventDefault()
     if (!url.trim()) return
@@ -41,6 +45,7 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(25000),
       })
       const data = await response.json()
 
@@ -51,7 +56,13 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
       setResult(data)
       setStatus('success')
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong.')
+      const message =
+        err instanceof DOMException && err.name === 'TimeoutError'
+          ? 'That site took too long to respond. Try again?'
+          : err instanceof Error
+            ? err.message
+            : 'Something went wrong.'
+      setErrorMessage(message)
       setStatus('error')
     }
   }
@@ -121,7 +132,10 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
               )}
             </div>
 
-            <div className="mb-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm font-bold">
+            <div
+              className="mb-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm font-bold"
+              style={{ fontFamily: status === 'success' ? toCssFontFamily(result?.font ?? null) : undefined }}
+            >
               {status === 'loading' && 'Detecting font…'}
               {status === 'success' &&
                 (result?.font

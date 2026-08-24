@@ -1,5 +1,6 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { DesignLanguageResult } from '../types'
+import { toCssFontFamily } from '../lib/font'
 
 interface MemoBoardProps {
   data: DesignLanguageResult
@@ -32,12 +33,6 @@ const COUPLE_FAVORITES = [
 ]
 
 const ADD_MEMORY_OPTIONS = ['Add Photo', 'Add Video', 'Write a Memory']
-
-function toCssFontFamily(font: DesignLanguageResult['font']) {
-  if (!font) return undefined
-  const generic = font.category.toLowerCase().replace(/\s+/g, '-')
-  return `"${font.family}", ${generic}`
-}
 
 function getReadableTextColor(cssColor: string) {
   const canvas = document.createElement('canvas')
@@ -92,20 +87,6 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
   const names = couple.names ?? 'Your Names'
   const date = couple.date ?? 'Your Wedding Date'
   const tagline = couple.tagline ?? "A day filled with love, laughter, and moments we'll never forget."
-
-  useEffect(() => {
-    if (!font?.family) return
-
-    const id = 'design-language-font'
-    let link = document.getElementById(id) as HTMLLinkElement | null
-    if (!link) {
-      link = document.createElement('link')
-      link.id = id
-      link.rel = 'stylesheet'
-      document.head.appendChild(link)
-    }
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}:wght@400;700&display=swap`
-  }, [font?.family])
 
   return (
     <div className="bg-gray-100 px-6 py-10" style={{ fontFamily }}>
