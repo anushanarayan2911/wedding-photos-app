@@ -34,6 +34,14 @@ const IGNORED_COLORS = new Set([
   'transparent', 'currentcolor', 'inherit', 'none',
 ])
 
+// Component-library/framework CSS (icon fonts, carousel widgets, page-builder
+// internals) generates rules that have nothing to do with the site's actual
+// design language, but can otherwise dominate frequency-based extraction by
+// sheer volume. Scoped out wherever we can tie a color/font back to its
+// originating selector.
+const NOISE_SELECTOR_PATTERN = /wix-ui-tpa|\btpa[_-]|swiper-|slick-|owl-carousel|\bicon(s)?\b|fa-solid|fa-regular|fa-brands|material-icons/i
+const ICON_FONT_NAME_PATTERN = /icon(s)?(\s|$)|glyphicon|font\s?awesome|material\s?icons|ionicons|feather|remixicon|bootstrap-icons/i
+
 const MONTHS_FULL = 'January|February|March|April|May|June|July|August|September|October|November|December'
 const MONTHS_ABBR = 'Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec'
 const ANY_MONTH = `(?:${MONTHS_FULL}|${MONTHS_ABBR})`
@@ -63,7 +71,45 @@ const MONTH_INDEX = new Map([
 // Numeric MM/DD/YYYY or MM.DD.YYYY (US convention — ambiguous with DD/MM elsewhere, but MM/DD is by far the common case on US wedding sites)
 const DATE_REGEX_NUMERIC = /\b(0?[1-9]|1[0-2])[/.](0?[1-9]|[12]\d|3[01])[/.](\d{4})\b/
 
-const NAME_STOPWORDS = new Set(['terms', 'conditions', 'privacy', 'faq', 'q', 'help', 'contact', 'copyright'])
+const MONTH_NAME_SET = new Set([...MONTHS_FULL.split('|'), ...MONTHS_ABBR.split('|')].map((w) => w.toLowerCase()))
+
+// Common page-chrome words that sit right next to a couple's names in a hero
+// section ("In Details Andres & Gabriela ARE GETTING married") and would
+// otherwise get swept into the match by a purely capitalized-word regex.
+const NAME_FILLER_WORDS = new Set([
+  'terms', 'conditions', 'privacy', 'faq', 'q', 'help', 'contact', 'copyright',
+  'in', 'the', 'our', 'we', 'were', 'join', 'us', 'for', 'at', 'on', 'to',
+  'and', 'of', 'a', 'an', 'is', 'are', 'will', 'be', 'you', 'your', 'please',
+  'welcome', 'home', 'about', 'rsvp', 'schedule', 'registry', 'gallery',
+  'travel', 'story', 'gift', 'gifts', 'thank', 'thanks', 'celebrate',
+  'celebration', 'day', 'details', 'detail', 'info', 'information',
+  'wedding', 'weddings', 'save', 'date', 'getting', 'married', 'marrying',
+])
+
+function isNameWord(word) {
+  if (!/^[A-Z][a-zA-Z'.-]*$/.test(word)) return false
+  if (word === word.toUpperCase()) return false // ALL-CAPS chrome text ("ARE", "RSVP"), not a name
+  const lower = word.toLowerCase()
+  return !NAME_FILLER_WORDS.has(lower) && !MONTH_NAME_SET.has(lower)
+}
+
+// --- css noise filtering ----------------------------------------------------
+
+// Strips out rules whose selector marks them as component-library/framework
+// internals (icon fonts, carousel widgets, page-builder UI kits) before we do
+// any frequency-based scanning. This is a lightweight, non-nested-aware CSS
+// split — good enough here because backtracking naturally resolves nested
+// blocks (e.g. `@media {...}`) into their innermost selector/body pairs.
+function nonNoiseCssBody(css) {
+  const parts = []
+  const ruleRegex = /([^{}]+)\{([^{}]*)\}/g
+  let m
+  while ((m = ruleRegex.exec(css))) {
+    if (NOISE_SELECTOR_PATTERN.test(m[1])) continue
+    parts.push(m[2])
+  }
+  return parts.join('\n')
+}
 
 // --- colors ---------------------------------------------------------------
 
@@ -129,7 +175,7 @@ function isVibrant(color) {
 }
 
 function extractColors(css) {
-  const matches = css.match(/#(?:[0-9a-fA-F]{3}){1,2}\b|rgba?\([^)]+\)|hsla?\([^)]+\)/g) || []
+  const matches = nonNoiseCssBody(css).match(/#(?:[0-9a-fA-F]{3}){1,2}\b|rgba?\([^)]+\)|hsla?\([^)]+\)/g) || []
   const counts = new Map()
 
   for (const raw of matches) {
@@ -234,7 +280,10 @@ function categoryFromGeneric(generic) {
 
 function primaryAndCategoryFromTokens(tokens) {
   const primary = tokens.find(
-    (t) => !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) && !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()),
+    (t) =>
+      !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) &&
+      !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()) &&
+      !ICON_FONT_NAME_PATTERN.test(t),
   )
   if (!primary) return null
   const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
@@ -265,7 +314,7 @@ function extractFont(css, baseUrl) {
   let result = findHeadingFont(cssVars)
 
   if (!result) {
-    const declarations = css.match(/font-family\s*:\s*([^;{}]+)/gi) || []
+    const declarations = nonNoiseCssBody(css).match(/font-family\s*:\s*([^;{}]+)/gi) || []
     const primaryCounts = new Map()
     const categoryByFont = new Map()
 
@@ -275,7 +324,10 @@ function extractFont(css, baseUrl) {
       if (tokens.length === 0) continue
 
       const primary = tokens.find(
-        (t) => !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) && !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()),
+        (t) =>
+          !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) &&
+          !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()) &&
+          !ICON_FONT_NAME_PATTERN.test(t),
       )
       if (!primary) continue
 
@@ -363,26 +415,40 @@ function formatIsoDate(iso) {
   return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-// Strips a trailing month name that bled in from an adjacent element — e.g. a
-// "Jordan" name sitting right next to a "September 6, 2025" date, once
-// flattened to plain text, can otherwise get read as "Jordan September".
-function stripTrailingMonth(name) {
-  const words = name.trim().split(/\s+/)
-  if (words.length > 1 && new RegExp(`^${ANY_MONTH}$`, 'i').test(words[words.length - 1])) {
-    words.pop()
+// A flattened page can read "In Details Andres & Gabriela ARE GETTING" where
+// visually only "Andres & Gabriela" was ever the couple's name — surrounding
+// chrome (nav labels, headings, all-caps decorative text) sits right up
+// against it with no punctuation to anchor a stricter regex on. Rather than
+// trust the regex's word-count captures directly, trim each side down to
+// only the run of words immediately adjacent to the conjunction that
+// actually look like name words.
+function trimToNameWords(text, direction) {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  if (direction === 'keepEnd') {
+    let start = words.length
+    while (start > 0 && isNameWord(words[start - 1])) start--
+    return words.slice(start).join(' ')
   }
-  return words.join(' ')
+  let end = 0
+  while (end < words.length && isNameWord(words[end])) end++
+  return words.slice(0, end).join(' ')
 }
 
 function extractCoupleNamesFromText(text) {
   const namePart = "[A-Z][a-zA-Z'.-]+(?:\\s+[A-Z][a-zA-Z'.-]+){0,2}"
 
   const weddingOf = text.match(new RegExp(`wedding\\s+of\\s+(${namePart})\\s+(?:and|&|\\+)\\s+(${namePart})`, 'i'))
-  if (weddingOf) return `${stripTrailingMonth(weddingOf[1])} & ${stripTrailingMonth(weddingOf[2])}`
+  if (weddingOf) {
+    const left = trimToNameWords(weddingOf[1], 'keepEnd')
+    const right = trimToNameWords(weddingOf[2], 'keepStart')
+    if (left && right) return `${left} & ${right}`
+  }
 
   const conjunction = text.slice(0, 3000).match(new RegExp(`\\b(${namePart})\\s+(?:&|\\+)\\s+(${namePart})\\b`))
-  if (conjunction && !NAME_STOPWORDS.has(conjunction[1].toLowerCase()) && !NAME_STOPWORDS.has(conjunction[2].toLowerCase())) {
-    return `${stripTrailingMonth(conjunction[1])} & ${stripTrailingMonth(conjunction[2])}`
+  if (conjunction) {
+    const left = trimToNameWords(conjunction[1], 'keepEnd')
+    const right = trimToNameWords(conjunction[2], 'keepStart')
+    if (left && right) return `${left} & ${right}`
   }
 
   return null
