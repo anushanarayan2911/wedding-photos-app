@@ -191,6 +191,41 @@ function extractColors(css) {
   return [...vibrant, ...muted]
 }
 
+function resolveVarValue(value, cssVars, depth = 0) {
+  if (depth > 5) return value.trim()
+  const trimmed = value.trim()
+  const match = trimmed.match(/^var\(\s*--([a-zA-Z0-9_-]+)\s*(?:,\s*(.+))?\)$/i)
+  if (!match) return trimmed
+  const [, name, fallback] = match
+  const resolved = cssVars.get(name) ?? fallback
+  return resolved ? resolveVarValue(resolved, cssVars, depth + 1) : trimmed
+}
+
+// Most of our theming assumes a white page background, but plenty of real
+// sites set something else at the html/body level (cream, black, a soft
+// tint) — that's often as much a part of the site's identity as its accent
+// color, so recreating "exactly" means picking it up instead of forcing
+// white everywhere.
+function extractSiteBackground(css, cssVars) {
+  const bodyBlock = css.match(/\bbody\s*\{([^}]*)\}/i)
+  const htmlBlock = css.match(/\bhtml\s*\{([^}]*)\}/i)
+
+  for (const block of [bodyBlock, htmlBlock]) {
+    if (!block) continue
+    const bgMatch = block[1].match(/background(?:-color)?\s*:\s*([^;]+)/i)
+    if (!bgMatch) continue
+
+    const resolved = resolveVarValue(bgMatch[1], cssVars)
+    if (!resolved || !parseColor(resolved)) continue
+
+    const key = resolved.toLowerCase()
+    if (IGNORED_COLORS.has(key)) continue
+
+    return resolved
+  }
+  return null
+}
+
 // --- fonts ------------------------------------------------------------------
 
 function extractCssVariables(css) {
@@ -308,49 +343,95 @@ function findHeadingFont(cssVars) {
   return primaryAndCategoryFromTokens(tokens)
 }
 
-function extractFont(css, baseUrl) {
-  const cssVars = extractCssVariables(css)
-
-  let result = findHeadingFont(cssVars)
-
-  if (!result) {
-    const declarations = nonNoiseCssBody(css).match(/font-family\s*:\s*([^;{}]+)/gi) || []
-    const primaryCounts = new Map()
-    const categoryByFont = new Map()
-
-    for (const decl of declarations) {
-      const value = decl.replace(/font-family\s*:\s*/i, '')
-      const tokens = resolveVarTokens(toTokens(value), cssVars)
-      if (tokens.length === 0) continue
-
-      const primary = tokens.find(
-        (t) =>
-          !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) &&
-          !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()) &&
-          !ICON_FONT_NAME_PATTERN.test(t),
-      )
-      if (!primary) continue
-
-      primaryCounts.set(primary, (primaryCounts.get(primary) || 0) + 1)
-
-      const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
-      if (generic && !categoryByFont.has(primary)) {
-        categoryByFont.set(primary, generic)
-      }
+// Hand-built sites (and Squarespace's custom-CSS layer) more often style
+// headings with a plain `h1 { font-family: ... }` rule than a themeable
+// token — the same "distinct heading font" signal, just expressed directly
+// on the element instead of through a custom property.
+function findHeadingFontFromSelectors(css, cssVars) {
+  for (const tag of ['h1', 'h2']) {
+    const tagBoundary = new RegExp(`(^|[\\s,])${tag}([\\s,.:#[]|$)`, 'i')
+    const ruleRegex = /([^{}]+)\{([^{}]*)\}/g
+    let m
+    while ((m = ruleRegex.exec(css))) {
+      if (!tagBoundary.test(m[1].trim())) continue
+      const fontMatch = m[2].match(/font-family\s*:\s*([^;]+)/i)
+      if (!fontMatch) continue
+      const result = primaryAndCategoryFromTokens(resolveVarTokens(toTokens(fontMatch[1]), cssVars))
+      if (result) return result
     }
+  }
+  return null
+}
 
-    const sorted = [...primaryCounts.entries()].sort((a, b) => b[1] - a[1])
-    if (sorted.length === 0) return null
+// Same idea as findHeadingFont, but for the site's body-text token — when a
+// page builder exposes both, using them for their matching roles (heading
+// element vs. body copy) reproduces the site's actual typographic contrast
+// instead of flattening everything to one "winning" font.
+function findBodyFontFromVars(cssVars) {
+  const names = [...cssVars.keys()]
+  // Wix (and similar) expose several body sizes (XS/S/M/L) — "M" is the
+  // standard paragraph size; "L" is often large lead-in text styled to match
+  // the heading font, which would defeat the point of picking this apart.
+  const key =
+    names.find((name) => /body/i.test(name) && /-m-family$/i.test(name)) ??
+    names.find((name) => /body/i.test(name) && /family$/i.test(name))
+  if (!key) return null
 
-    const [family] = sorted[0]
-    result = { family, category: categoryFromGeneric(categoryByFont.get(family)) }
+  const tokens = resolveVarTokens(toTokens(cssVars.get(key)), cssVars)
+  return primaryAndCategoryFromTokens(tokens)
+}
+
+function findFrequencyFont(css, cssVars) {
+  const declarations = nonNoiseCssBody(css).match(/font-family\s*:\s*([^;{}]+)/gi) || []
+  const primaryCounts = new Map()
+  const categoryByFont = new Map()
+
+  for (const decl of declarations) {
+    const value = decl.replace(/font-family\s*:\s*/i, '')
+    const tokens = resolveVarTokens(toTokens(value), cssVars)
+    if (tokens.length === 0) continue
+
+    const primary = tokens.find(
+      (t) =>
+        !GENERIC_FONT_KEYWORDS.has(t.toLowerCase()) &&
+        !SYSTEM_FONT_KEYWORDS.has(t.toLowerCase()) &&
+        !ICON_FONT_NAME_PATTERN.test(t),
+    )
+    if (!primary) continue
+
+    primaryCounts.set(primary, (primaryCounts.get(primary) || 0) + 1)
+
+    const generic = tokens.find((t) => GENERIC_FONT_KEYWORDS.has(t.toLowerCase()))
+    if (generic && !categoryByFont.has(primary)) {
+      categoryByFont.set(primary, generic)
+    }
   }
 
+  const sorted = [...primaryCounts.entries()].sort((a, b) => b[1] - a[1])
+  if (sorted.length === 0) return null
+
+  const [family] = sorted[0]
+  return { family, category: categoryFromGeneric(categoryByFont.get(family)) }
+}
+
+function withFontSrc(result, css, baseUrl) {
+  if (!result) return null
   const fontFaces = extractFontFaces(css, baseUrl)
   const faces = fontFaces.get(result.family.toLowerCase())
   const src = faces ? bestFontSrc(faces) : null
-
   return src ? { ...result, src } : result
+}
+
+function extractFonts(css, baseUrl) {
+  const cssVars = extractCssVariables(css)
+
+  const heading = findHeadingFont(cssVars) ?? findHeadingFontFromSelectors(css, cssVars)
+  const body = findBodyFontFromVars(cssVars) ?? findFrequencyFont(css, cssVars)
+
+  return {
+    heading: withFontSrc(heading, css, baseUrl),
+    body: withFontSrc(body, css, baseUrl),
+  }
 }
 
 // --- couple info --------------------------------------------------------
@@ -584,7 +665,10 @@ app.post('/api/design-language', async (req, res) => {
     }
 
     const colors = extractColors(css).slice(0, 6)
-    const font = extractFont(css, target.toString())
+    const cssVars = extractCssVariables(css)
+    const fonts = extractFonts(css, target.toString())
+    const font = fonts.heading ?? fonts.body
+    const background = extractSiteBackground(css, cssVars)
     const bodyText = getVisibleText($)
     const jsonLdEvent = extractJsonLdEvent($)
     const couple = {
@@ -593,7 +677,14 @@ app.post('/api/design-language', async (req, res) => {
       tagline: extractTagline($, jsonLdEvent),
     }
 
-    res.json({ colors, font, couple })
+    res.json({
+      colors,
+      font,
+      headingFont: fonts.heading,
+      bodyFont: fonts.body,
+      background,
+      couple,
+    })
   } catch (err) {
     console.error(`[design-language] ${target}:`, err.message)
     res.status(502).json({ error: 'Could not fetch or analyze that site.' })

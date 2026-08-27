@@ -87,10 +87,11 @@ function PlaceholderImage({
   className?: string
   background: string
 }) {
+  const textColor = useMemo(() => getReadableTextColor(background), [background])
   return (
     <div
-      className={`flex items-center justify-center text-xs font-bold text-gray-600 ${className}`}
-      style={{ backgroundColor: background }}
+      className={`flex items-center justify-center text-xs font-bold ${className}`}
+      style={{ backgroundColor: background, color: textColor }}
     >
       {label}
     </div>
@@ -102,12 +103,14 @@ function PlaceholderImage({
 // block: a full-bleed background with content constrained to a readable width.
 function FullBleedSection({
   background,
+  headingFontFamily,
   title,
   subtitle,
   center = false,
   children,
 }: {
   background: string
+  headingFontFamily?: string
   title?: string
   subtitle?: string
   center?: boolean
@@ -116,7 +119,11 @@ function FullBleedSection({
   return (
     <section className="w-full py-14" style={{ backgroundColor: background }}>
       <div className={`mx-auto max-w-4xl px-6 ${center ? 'text-center' : ''}`}>
-        {title && <h2 className="mb-1 text-xl font-bold">{title}</h2>}
+        {title && (
+          <h2 className="mb-1 text-xl font-bold" style={{ fontFamily: headingFontFamily }}>
+            {title}
+          </h2>
+        )}
         {subtitle && <p className="mb-6 text-sm text-gray-500">{subtitle}</p>}
         {children}
       </div>
@@ -125,12 +132,23 @@ function FullBleedSection({
 }
 
 export default function MemoBoard({ data, onBack }: MemoBoardProps) {
-  const { colors, font, couple } = data
+  const { colors, couple } = data
 
-  const fontFamily = useMemo(() => toCssFontFamily(font), [font])
+  const bodyFontFamily = useMemo(() => toCssFontFamily(data.bodyFont ?? data.font), [data.bodyFont, data.font])
+  const headingFontFamily = useMemo(
+    () => toCssFontFamily(data.headingFont ?? data.font),
+    [data.headingFont, data.font],
+  )
+
   const accent = colors[0] ?? '#111111'
   const secondary = useMemo(() => pickSecondary(colors, accent), [colors, accent])
   const accentText = useMemo(() => getReadableTextColor(accent), [accent])
+
+  // Most sites are white, but plenty set something else at the page level
+  // (cream, black, a soft tint) — that's as much a part of the look as the
+  // accent color, so it stands in for the hardcoded white "base" sections.
+  const siteBackground = data.background ?? '#ffffff'
+  const baseText = useMemo(() => getReadableTextColor(siteBackground), [siteBackground])
 
   const accentTint = useMemo(() => withAlpha(accent, 0.12), [accent])
   const secondaryTint = useMemo(() => withAlpha(secondary, 0.12), [secondary])
@@ -142,12 +160,12 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
   const tagline = couple.tagline ?? "A day filled with love, laughter, and moments we'll never forget."
 
   return (
-    <div style={{ fontFamily }}>
-      <div className="bg-white px-6 py-3">
+    <div style={{ fontFamily: bodyFontFamily, backgroundColor: siteBackground, color: baseText }}>
+      <div className="px-6 py-3" style={{ backgroundColor: siteBackground }}>
         <button
           type="button"
           onClick={onBack}
-          className="mx-auto block max-w-4xl text-sm text-gray-500 hover:text-black"
+          className="mx-auto block max-w-4xl text-sm opacity-70 hover:opacity-100"
         >
           ← Back
         </button>
@@ -155,7 +173,9 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
 
       <FullBleedSection background={accentTint}>
         <PlaceholderImage label="Hero Image" background={placeholderBackground} className="mb-6 h-56 w-full rounded-md" />
-        <h1 className="mb-2 text-4xl font-bold">{names}</h1>
+        <h1 className="mb-2 text-4xl font-bold" style={{ fontFamily: headingFontFamily }}>
+          {names}
+        </h1>
         <p className="mb-3 text-sm text-gray-500">{date}</p>
         <p className="mb-6 text-gray-600">{tagline}</p>
         <button
@@ -167,7 +187,12 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
         </button>
       </FullBleedSection>
 
-      <FullBleedSection background="#ffffff" title="The Day at a Glance" subtitle="Jump to a moment in the timeline.">
+      <FullBleedSection
+        background={siteBackground}
+        headingFontFamily={headingFontFamily}
+        title="The Day at a Glance"
+        subtitle="Jump to a moment in the timeline."
+      >
         <div className="flex flex-wrap gap-8">
           {GLANCE_ITEMS.map((item) => (
             <div key={item} className="flex flex-col items-center gap-2 text-center text-sm">
@@ -180,14 +205,17 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
 
       <FullBleedSection
         background={secondaryTint}
+        headingFontFamily={headingFontFamily}
         title="Moments You Might Have Missed"
         subtitle="Some of the beautiful moments that happened while you were celebrating elsewhere."
       >
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           {MISSED_MOMENTS.map((moment) => (
-            <div key={moment.title} className="rounded-md border border-gray-200 bg-white p-3">
+            <div key={moment.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PlaceholderImage background={placeholderBackground} className="mb-3 h-24 w-full rounded" />
-              <h3 className="mb-1 text-sm font-bold">{moment.title}</h3>
+              <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
+                {moment.title}
+              </h3>
               <p className="text-xs text-gray-500">{moment.description}</p>
             </div>
           ))}
@@ -195,15 +223,18 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
       </FullBleedSection>
 
       <FullBleedSection
-        background="#ffffff"
+        background={siteBackground}
+        headingFontFamily={headingFontFamily}
         title="From The Guests"
         subtitle="Photos, videos, quotes and memories shared by everyone who was there."
       >
         <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
           {GUEST_ITEMS.map((item, i) => (
-            <div key={i} className="mb-4 break-inside-avoid rounded-md border border-gray-200 bg-white p-3">
+            <div key={i} className="mb-4 break-inside-avoid rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PlaceholderImage background={placeholderBackground} className="mb-3 h-32 w-full rounded" />
-              <h3 className="mb-1 text-sm font-bold">{item.label}</h3>
+              <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
+                {item.label}
+              </h3>
               <p className="text-xs text-gray-500">{item.text}</p>
             </div>
           ))}
@@ -212,14 +243,17 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
 
       <FullBleedSection
         background={accentTint}
+        headingFontFamily={headingFontFamily}
         title="From the Couple"
         subtitle={`Our favourite memories from the day, chosen by ${names}.`}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {COUPLE_FAVORITES.map((item) => (
-            <div key={item.title} className="rounded-md border border-gray-200 bg-white p-3">
+            <div key={item.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PlaceholderImage background={placeholderBackground} className="mb-3 h-32 w-full rounded" />
-              <h3 className="mb-1 text-sm font-bold">{item.title}</h3>
+              <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
+                {item.title}
+              </h3>
               <p className="text-xs text-gray-500">{item.description}</p>
             </div>
           ))}
@@ -227,7 +261,8 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
       </FullBleedSection>
 
       <FullBleedSection
-        background="#ffffff"
+        background={siteBackground}
+        headingFontFamily={headingFontFamily}
         title="Add Your Memory"
         subtitle="Were you there? Share your photos, videos, or a written memory."
       >
@@ -240,7 +275,7 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
         </button>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {ADD_MEMORY_OPTIONS.map((label) => (
-            <div key={label} className="flex items-center gap-3 rounded-md border border-gray-200 bg-white p-4">
+            <div key={label} className="flex items-center gap-3 rounded-md border border-gray-200 bg-white p-4 text-gray-900">
               <div className="h-8 w-8 rounded-full" style={{ backgroundColor: placeholderBackground }} />
               <span className="text-sm font-bold">{label}</span>
             </div>
@@ -250,9 +285,11 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
 
       <FullBleedSection background={closingTint} center>
         <PlaceholderImage label="Closing Image" background={placeholderBackground} className="mb-6 h-56 w-full rounded-md" />
-        <h2 className="mb-2 text-2xl font-bold">Thank you for being part of our story.</h2>
+        <h2 className="mb-2 text-2xl font-bold" style={{ fontFamily: headingFontFamily }}>
+          Thank you for being part of our story.
+        </h2>
         <p className="mb-6 text-gray-600">We're so grateful for every moment, every laugh, and every memory shared.</p>
-        <div className="grid grid-cols-1 overflow-hidden rounded-md border border-gray-300 bg-white sm:grid-cols-2 sm:divide-x sm:divide-gray-300">
+        <div className="grid grid-cols-1 overflow-hidden rounded-md border border-gray-300 bg-white text-gray-900 sm:grid-cols-2 sm:divide-x sm:divide-gray-300">
           <button type="button" className="px-5 py-3 text-sm font-bold hover:bg-gray-50">
             Share This Board
           </button>
