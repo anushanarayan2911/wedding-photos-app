@@ -3,6 +3,7 @@ import Step from './Step'
 import type { DesignLanguageResult } from '../types'
 import { toCssFontFamily } from '../lib/font'
 import { useDesignFont } from '../hooks/useDesignFont'
+import { describeFetchError, fetchDesignLanguage } from '../lib/designLanguage'
 
 const STEPS = [
   {
@@ -22,7 +23,7 @@ const STEPS = [
 type Status = 'idle' | 'loading' | 'success' | 'error'
 
 interface SyncBoardProps {
-  onContinue: (data: DesignLanguageResult) => void
+  onContinue: (data: DesignLanguageResult, sourceUrl: string) => void
 }
 
 export default function SyncBoard({ onContinue }: SyncBoardProps) {
@@ -41,28 +42,11 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
     setErrorMessage('')
 
     try {
-      const response = await fetch('/api/design-language', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-        signal: AbortSignal.timeout(25000),
-      })
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error ?? 'Something went wrong.')
-      }
-
+      const data = await fetchDesignLanguage(url)
       setResult(data)
       setStatus('success')
     } catch (err) {
-      const message =
-        err instanceof DOMException && err.name === 'TimeoutError'
-          ? 'That site took too long to respond. Try again?'
-          : err instanceof Error
-            ? err.message
-            : 'Something went wrong.'
-      setErrorMessage(message)
+      setErrorMessage(describeFetchError(err))
       setStatus('error')
     }
   }
@@ -146,7 +130,7 @@ export default function SyncBoard({ onContinue }: SyncBoardProps) {
             <button
               type="button"
               disabled={status !== 'success' || !result}
-              onClick={() => result && onContinue(result)}
+              onClick={() => result && onContinue(result, url)}
               className="w-full rounded-md border border-black bg-white py-3 text-sm font-bold disabled:opacity-50"
             >
               Looks good, continue

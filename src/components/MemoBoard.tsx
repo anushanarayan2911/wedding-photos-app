@@ -1,9 +1,10 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { DesignLanguageResult } from '../types'
 import { toCssFontFamily } from '../lib/font'
 
 interface MemoBoardProps {
   data: DesignLanguageResult
+  sourceUrl: string | null
   onBack: () => void
 }
 
@@ -138,9 +139,58 @@ function FullBleedSection({
   )
 }
 
-export default function MemoBoard({ data, onBack }: MemoBoardProps) {
+// The couple's way to link back here from their own wedding website — copies
+// a URL that reopens this exact board (via ?site=), and shows it inline too
+// since clipboard access isn't guaranteed everywhere.
+function ShareBoardButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  async function handleClick() {
+    setOpen(true)
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard API unavailable — the revealed input below still lets them copy manually
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={handleClick} className="w-full px-5 py-3 text-sm font-bold hover:bg-gray-50">
+        {copied ? 'Copied!' : 'Share This Board'}
+      </button>
+      {open && (
+        <div className="border-t border-gray-300 p-3">
+          <label className="mb-1 block text-left text-xs text-gray-500">
+            Paste this link on your wedding website:
+          </label>
+          <input
+            type="text"
+            readOnly
+            value={url}
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-xs text-gray-700"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
   const { colors, couple } = data
   const glanceItems = data.schedule.length > 0 ? data.schedule : FALLBACK_GLANCE_ITEMS
+
+  const shareUrl = useMemo(() => {
+    if (!sourceUrl) return null
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.searchParams.set('site', sourceUrl)
+    return url.toString()
+  }, [sourceUrl])
 
   const bodyFontFamily = useMemo(() => toCssFontFamily(data.bodyFont ?? data.font), [data.bodyFont, data.font])
   const headingFontFamily = useMemo(
@@ -299,9 +349,13 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
         </h2>
         <p className="mb-6 text-gray-600">We're so grateful for every moment, every laugh, and every memory shared.</p>
         <div className="grid grid-cols-1 overflow-hidden rounded-md border border-gray-300 bg-white text-gray-900 sm:grid-cols-2 sm:divide-x sm:divide-gray-300">
-          <button type="button" className="px-5 py-3 text-sm font-bold hover:bg-gray-50">
-            Share This Board
-          </button>
+          {shareUrl ? (
+            <ShareBoardButton url={shareUrl} />
+          ) : (
+            <button type="button" disabled className="px-5 py-3 text-sm font-bold opacity-50">
+              Share This Board
+            </button>
+          )}
           <button type="button" className="px-5 py-3 text-sm font-bold hover:bg-gray-50">
             Save Your Favourites
           </button>
