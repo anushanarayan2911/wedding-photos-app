@@ -448,6 +448,58 @@ function getVisibleText($, limit = 20000) {
   return decoded.slice(0, limit)
 }
 
+// --- schedule --------------------------------------------------------------
+
+const SCHEDULE_KEYWORDS = [
+  'Getting Ready', 'Welcome Party', 'Rehearsal Dinner', 'First Look',
+  'Ceremony', 'Cocktail Hour', 'Reception', 'Toasts', 'Speeches',
+  'First Dance', 'Dinner', 'Dancing', 'Send-Off', 'After Party', 'Brunch',
+]
+
+const SCHEDULE_TIME_REGEX = /\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:AM|PM)\b/i
+
+// The template's "Day at a Glance" row is generic placeholder content by
+// default — if the site actually lists its own schedule (many do, often
+// with a time next to each item), that's real information worth showing
+// instead of a made-up itinerary.
+function extractSchedule(bodyText) {
+  const found = []
+
+  for (const keyword of SCHEDULE_KEYWORDS) {
+    const pattern = new RegExp(`\\b${keyword.replace(/[-\s]+/g, '[-\\s]+')}\\b`, 'gi')
+    let match
+    let candidate = null
+
+    // A keyword can appear more than once — an incidental mention ("...ceremony,
+    // reception to follow...") as well as its actual schedule entry, and the
+    // incidental one can sit closer to an unrelated time than the real entry
+    // does, so distance alone can't tell them apart. What can: a real listing
+    // is followed by the start of its own content (a place name, a time) —
+    // incidental prose is followed by an ordinary lowercase word ("to follow").
+    while ((match = pattern.exec(bodyText))) {
+      const after = bodyText.slice(match.index + match[0].length).trimStart()
+      const nextWord = after.match(/^\S+/)?.[0] ?? ''
+      const looksLikeListing = /^[A-Z]/.test(nextWord) || SCHEDULE_TIME_REGEX.test(nextWord)
+
+      const window = bodyText.slice(match.index, match.index + 100)
+      const timeMatch = window.match(SCHEDULE_TIME_REGEX)
+
+      if (looksLikeListing) {
+        candidate = { index: match.index, label: keyword, time: timeMatch ? timeMatch[0] : null }
+        break
+      }
+      if (!candidate) candidate = { index: match.index, label: keyword, time: timeMatch ? timeMatch[0] : null }
+    }
+
+    if (candidate) found.push(candidate)
+  }
+
+  return found
+    .sort((a, b) => a.index - b.index)
+    .slice(0, 8)
+    .map(({ label, time }) => ({ label, time }))
+}
+
 // Many site builders (Squarespace, custom Next.js sites, etc.) embed
 // schema.org structured data for SEO/social previews — an Event block there
 // is a far more reliable source than scraping visible text, when present.
@@ -676,6 +728,7 @@ app.post('/api/design-language', async (req, res) => {
       date: extractDate($, bodyText, jsonLdEvent),
       tagline: extractTagline($, jsonLdEvent),
     }
+    const schedule = extractSchedule(bodyText)
 
     res.json({
       colors,
@@ -684,6 +737,7 @@ app.post('/api/design-language', async (req, res) => {
       bodyFont: fonts.body,
       background,
       couple,
+      schedule,
     })
   } catch (err) {
     console.error(`[design-language] ${target}:`, err.message)

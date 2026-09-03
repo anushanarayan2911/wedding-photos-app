@@ -7,7 +7,14 @@ interface MemoBoardProps {
   onBack: () => void
 }
 
-const GLANCE_ITEMS = ['Getting Ready', 'Ceremony', 'Reception', 'Speeches', 'Dancing', 'Little Moments']
+const FALLBACK_GLANCE_ITEMS = [
+  { label: 'Getting Ready', time: null },
+  { label: 'Ceremony', time: null },
+  { label: 'Reception', time: null },
+  { label: 'Speeches', time: null },
+  { label: 'Dancing', time: null },
+  { label: 'Little Moments', time: null },
+]
 
 const MISSED_MOMENTS = [
   { title: 'The First Look', description: 'A quiet moment before the ceremony.' },
@@ -133,6 +140,7 @@ function FullBleedSection({
 
 export default function MemoBoard({ data, onBack }: MemoBoardProps) {
   const { colors, couple } = data
+  const glanceItems = data.schedule.length > 0 ? data.schedule : FALLBACK_GLANCE_ITEMS
 
   const bodyFontFamily = useMemo(() => toCssFontFamily(data.bodyFont ?? data.font), [data.bodyFont, data.font])
   const headingFontFamily = useMemo(
@@ -194,10 +202,11 @@ export default function MemoBoard({ data, onBack }: MemoBoardProps) {
         subtitle="Jump to a moment in the timeline."
       >
         <div className="flex flex-wrap gap-8">
-          {GLANCE_ITEMS.map((item) => (
-            <div key={item} className="flex flex-col items-center gap-2 text-center text-sm">
+          {glanceItems.map((item) => (
+            <div key={item.label} className="flex flex-col items-center gap-2 text-center text-sm">
               <div className="h-10 w-10 rounded-full" style={{ backgroundColor: accent, opacity: 0.85 }} />
-              <span className="text-gray-600">{item}</span>
+              <span className="text-gray-600">{item.label}</span>
+              {item.time && <span className="text-xs text-gray-400">{item.time}</span>}
             </div>
           ))}
         </div>
