@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import NavBar from './components/NavBar'
+import NavBar, { type AppTab } from './components/NavBar'
 import CreateAccount from './components/CreateAccount'
 import UploadPhotos from './components/UploadPhotos'
 import PhotoGallery from './components/PhotoGallery'
@@ -24,6 +24,7 @@ function App() {
   // couple's own onboarding, not their guests).
   const [sharedLinkStatus, setSharedLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [sharedLinkError, setSharedLinkError] = useState('')
+  const [isSharedLinkView, setIsSharedLinkView] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -36,6 +37,7 @@ function App() {
         setBoardData(data)
         setSourceUrl(site)
         setStage('board')
+        setIsSharedLinkView(true)
         setSharedLinkStatus('idle')
       })
       .catch((err) => {
@@ -46,9 +48,21 @@ function App() {
 
   useDesignFont(boardData?.font)
 
+  const showTabs = !isSharedLinkView && (stage === 'gallery' || stage === 'board')
+
   return (
     <div className="min-h-screen bg-white text-black">
-      <NavBar fontFamily={boardData ? toCssFontFamily(boardData.font) : undefined} />
+      <NavBar
+        fontFamily={boardData ? toCssFontFamily(boardData.font) : undefined}
+        tabs={
+          showTabs
+            ? {
+                active: stage === 'board' ? 'board' : 'gallery',
+                onSelect: (tab: AppTab) => setStage(tab),
+              }
+            : undefined
+        }
+      />
 
       {sharedLinkStatus === 'loading' && (
         <div className="px-10 py-14 text-center text-sm text-gray-500">Loading your board…</div>
