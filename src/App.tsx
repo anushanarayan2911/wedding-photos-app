@@ -6,6 +6,7 @@ import PhotoGallery from './components/PhotoGallery'
 import SyncBoard from './components/SyncBoard'
 import MemoBoard from './components/MemoBoard'
 import type { DesignLanguageResult } from './types'
+import type { CategorizedPhoto } from './lib/categories'
 import { toCssFontFamily } from './lib/font'
 import { useDesignFont } from './hooks/useDesignFont'
 import { describeFetchError, fetchDesignLanguage } from './lib/designLanguage'
@@ -16,7 +17,7 @@ function App() {
   const [stage, setStage] = useState<Stage>('account')
   const [boardData, setBoardData] = useState<DesignLanguageResult | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([])
+  const [uploadedPhotos, setUploadedPhotos] = useState<CategorizedPhoto[]>([])
 
   // A board reached via a shared "?site=" link (e.g. one the couple put on
   // their own wedding website) should open straight to that board — no
@@ -103,8 +104,8 @@ function App() {
 
           {stage === 'upload' && (
             <UploadPhotos
-              onContinue={(photoUrls) => {
-                setUploadedPhotos(photoUrls)
+              onContinue={(photos) => {
+                setUploadedPhotos(photos)
                 setStage('gallery')
               }}
             />

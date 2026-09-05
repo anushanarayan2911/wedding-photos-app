@@ -1,7 +1,9 @@
+import 'dotenv/config'
 import express from 'express'
 import * as cheerio from 'cheerio'
 
 const PORT = process.env.PORT || 3001
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 
 // Some sites' servers close connections in ways that trip an internal
 // assertion in Node's fetch implementation (undici), which throws outside any
@@ -782,8 +784,129 @@ async function fetchText(url, referer) {
   return response.text()
 }
 
+// --- photo categorization ----------------------------------------------
+
+// Mirrors reference.md's "Wedding Day Photo Categories" — keep the two in
+// sync if one changes. Each category's keywords give the vision model enough
+// context to tell visually-similar moments apart (a first dance vs. general
+// party dancing, say) rather than just guessing from the bare category name.
+const PHOTO_CATEGORIES = [
+  {
+    name: 'Getting Ready',
+    keywords:
+      'hair and makeup, getting dressed, bridesmaids and groomsmen, parents and family, wedding details such as rings/shoes/flowers/invitations, candid moments before the ceremony',
+  },
+  {
+    name: 'First Look / Before the Ceremony',
+    keywords:
+      'the couple seeing each other for the first time, reactions, guests arriving, wedding party, venue and decorations before the ceremony starts',
+  },
+  {
+    name: 'The Ceremony',
+    keywords:
+      'walking down the aisle, vows, ring exchange, first kiss, signing the register, walking back down the aisle, confetti, cheers, hugs and congratulations',
+  },
+  {
+    name: 'Family & Group Photos',
+    keywords:
+      'posed immediate or extended family groups, wedding party group photos, formal or candid couple portraits, venue/location photographs, golden-hour or sunset photographs',
+  },
+  {
+    name: 'Drinks Reception',
+    keywords: 'guests chatting with drinks and canapés, candid interactions, games and activities, the couple mingling with guests',
+  },
+  {
+    name: 'Wedding Breakfast / Dinner',
+    keywords: 'table and room details, the couple entering the reception, guests eating and drinking at tables, candid table moments',
+  },
+  {
+    name: 'Speeches',
+    keywords: 'someone standing and speaking to seated guests, parent/maid of honour/best man/couple speeches, laughter and emotional reactions during speeches',
+  },
+  {
+    name: 'Cake Cutting',
+    keywords: 'cutting the wedding cake, couple reactions, guests watching the cake cutting',
+  },
+  {
+    name: 'First Dance',
+    keywords: "the couple's first dance alone on the dance floor, close emotional moments, guests watching, parent dances",
+  },
+  {
+    name: 'The Party',
+    keywords:
+      'general dancing, friends and family celebrating, a full dance floor, DJ or band, drinks, funny candid moments, evening portraits, night-time photographs, sparklers, fireworks, late-night dancing',
+  },
+  {
+    name: 'Little Moments',
+    keywords:
+      "small emotional reactions, hugs, friends laughing, children playing, grandparents and family, unexpected or funny moments, behind-the-scenes moments — anything that doesn't clearly fit another category",
+  },
+]
+
+const PHOTO_CATEGORY_NAMES = PHOTO_CATEGORIES.map((c) => c.name)
+
+function buildClassificationPrompt() {
+  const list = PHOTO_CATEGORIES.map((c, i) => `${i + 1}. ${c.name} — ${c.keywords}`).join('\n')
+  return `You are sorting a wedding photo into exactly one of these categories:\n\n${list}\n\nReply with only the category name, exactly as written above, and nothing else.`
+}
+
+async function classifyPhoto(mediaType, base64Data) {
+  if (!ANTHROPIC_API_KEY) {
+    throw new Error('Photo classification is not configured (missing ANTHROPIC_API_KEY).')
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 40,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+            { type: 'text', text: buildClassificationPrompt() },
+          ],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(30000),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Classification request failed: ${response.status} ${detail}`.trim())
+  }
+
+  const data = await response.json()
+  const text = data.content?.[0]?.text?.trim() ?? ''
+  const match = PHOTO_CATEGORY_NAMES.find((name) => text.toLowerCase().includes(name.toLowerCase()))
+  return match ?? 'Little Moments'
+}
+
 const app = express()
-app.use(express.json())
+app.use(express.json({ limit: '15mb' }))
+
+app.post('/api/classify-photo', async (req, res) => {
+  const { mediaType, data } = req.body ?? {}
+
+  if (typeof mediaType !== 'string' || typeof data !== 'string' || !data) {
+    return res.status(400).json({ error: 'mediaType and data are required.' })
+  }
+
+  try {
+    const category = await classifyPhoto(mediaType, data)
+    res.json({ category })
+  } catch (err) {
+    console.error('[classify-photo]', err.message)
+    res.status(502).json({ error: err.message })
+  }
+})
 
 app.post('/api/design-language', async (req, res) => {
   const { url } = req.body ?? {}
