@@ -10,4 +10,5 @@ export interface DesignLanguageResult {
     tagline: string | null
   }
   schedule: { label: string; time: string | null }[]
+  images: string[]
 }

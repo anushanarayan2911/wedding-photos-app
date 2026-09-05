@@ -434,6 +434,76 @@ function extractFonts(css, baseUrl) {
   }
 }
 
+// --- images ------------------------------------------------------------
+
+const SKIP_IMAGE_PATTERN = /logo|icon|favicon|sprite|avatar|placeholder/i
+const MIN_IMAGE_DIMENSION = 150
+const BLUR_PARAM_PATTERN = /blur[-_]?\d/i
+
+// Wix (and likely others) embed a tiny blurred lazy-load placeholder right in
+// <img src> — e.g. .../media/<id>~mv2.jpg/v1/fill/w_147,h_98,...,blur_2,.../file.jpg
+// — while the width/height *attributes* describe the full intended size, so
+// the dimension check below can't catch it. Bumping the transform's target
+// size up and dropping the blur keeps Wix's own CDN resizing/compression (so
+// it still loads fast) while recovering a real, unblurred photo — stripping
+// the transform entirely would work too, but serves the untouched original,
+// which can be 10MB+.
+function cleanImageUrl(url) {
+  const wixMatch = url.match(/^(https:\/\/static\.wixstatic\.com\/media\/[^/]+\/v1\/(?:fill|fit|crop)\/)([^/]+)(\/.*)$/)
+  if (!wixMatch) return url
+
+  const [, prefix, params, suffix] = wixMatch
+  const cleanedParams = params
+    .replace(/\bw_\d+/i, 'w_1200')
+    .replace(/\bh_\d+/i, 'h_1200')
+    .replace(/,?blur[-_]?\d+/i, '')
+
+  return `${prefix}${cleanedParams}${suffix}`
+}
+
+// Real photos from the site itself beat generic placeholder boxes every time.
+// og:image is the site's own chosen "representative" photo (nearly always a
+// real wedding photo, since that's what shows up when the site is shared) —
+// a strong first candidate — followed by real <img> content, filtered down
+// to exclude logos/icons/avatars and anything too small to be a real photo.
+function extractImages($, baseUrl) {
+  const images = []
+  const seen = new Set()
+
+  function addImage(rawUrl) {
+    if (!rawUrl || rawUrl.startsWith('data:')) return
+    let absolute
+    try {
+      absolute = new URL(rawUrl, baseUrl).toString()
+    } catch {
+      return
+    }
+    const key = absolute.split('?')[0].toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    images.push(absolute)
+  }
+
+  addImage($('meta[property="og:image"]').attr('content'))
+  addImage($('meta[name="twitter:image"]').attr('content'))
+
+  $('img').each((_, el) => {
+    let src = $(el).attr('src') || $(el).attr('data-src')
+    if (!src || /\.svg(\?|$)/i.test(src) || SKIP_IMAGE_PATTERN.test(src)) return
+
+    if (BLUR_PARAM_PATTERN.test(src)) src = cleanImageUrl(src)
+    if (BLUR_PARAM_PATTERN.test(src)) return // cleaning didn't help — skip rather than show a blurred placeholder
+
+    const width = Number($(el).attr('width'))
+    const height = Number($(el).attr('height'))
+    if ((width && width < MIN_IMAGE_DIMENSION) || (height && height < MIN_IMAGE_DIMENSION)) return
+
+    addImage(src)
+  })
+
+  return images.slice(0, 20)
+}
+
 // --- couple info --------------------------------------------------------
 
 // cheerio's .text() concatenates sibling elements with no whitespace between
@@ -458,11 +528,39 @@ const SCHEDULE_KEYWORDS = [
 
 const SCHEDULE_TIME_REGEX = /\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:AM|PM)\b/i
 
+// Real wedding sites usually render their itinerary as a repeating structural
+// element — one <li> or <tr> per event, each with its own time. Reading that
+// structure directly gives the site's actual wording ("Golf Course Ceremony"
+// or whatever they called it) instead of coercing everything into our own
+// fixed vocabulary of keywords. Two or more matching rows is required so a
+// single stray time elsewhere on the page can't be mistaken for a schedule.
+function extractScheduleFromStructure($) {
+  const rows = []
+
+  $('li, tr').each((_, el) => {
+    const text = $(el).text().replace(/\s+/g, ' ').trim()
+    if (!text || text.length > 80) return
+
+    const timeMatch = text.match(SCHEDULE_TIME_REGEX)
+    if (!timeMatch) return
+
+    const label = text
+      .replace(timeMatch[0], '')
+      .replace(/[-–—:|•·]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    rows.push({ label: label || text, time: timeMatch[0] })
+  })
+
+  return rows.length >= 2 ? rows.slice(0, 8) : null
+}
+
 // The template's "Day at a Glance" row is generic placeholder content by
 // default — if the site actually lists its own schedule (many do, often
 // with a time next to each item), that's real information worth showing
 // instead of a made-up itinerary.
-function extractSchedule(bodyText) {
+function extractScheduleFromKeywords(bodyText) {
   const found = []
 
   for (const keyword of SCHEDULE_KEYWORDS) {
@@ -498,6 +596,10 @@ function extractSchedule(bodyText) {
     .sort((a, b) => a.index - b.index)
     .slice(0, 8)
     .map(({ label, time }) => ({ label, time }))
+}
+
+function extractSchedule($, bodyText) {
+  return extractScheduleFromStructure($) ?? extractScheduleFromKeywords(bodyText)
 }
 
 // Many site builders (Squarespace, custom Next.js sites, etc.) embed
@@ -728,7 +830,8 @@ app.post('/api/design-language', async (req, res) => {
       date: extractDate($, bodyText, jsonLdEvent),
       tagline: extractTagline($, jsonLdEvent),
     }
-    const schedule = extractSchedule(bodyText)
+    const schedule = extractSchedule($, bodyText)
+    const images = extractImages($, target.toString())
 
     res.json({
       colors,
@@ -738,6 +841,7 @@ app.post('/api/design-language', async (req, res) => {
       background,
       couple,
       schedule,
+      images,
     })
   } catch (err) {
     console.error(`[design-language] ${target}:`, err.message)

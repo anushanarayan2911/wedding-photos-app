@@ -42,6 +42,18 @@ const COUPLE_FAVORITES = [
 
 const ADD_MEMORY_OPTIONS = ['Add Photo', 'Add Video', 'Write a Memory']
 
+// Sequential image slot indices — one real photo per card, cycling back
+// around if the site doesn't have enough distinct images for every slot.
+const HERO_IMAGE_INDEX = 0
+const MISSED_MOMENTS_IMAGE_START = HERO_IMAGE_INDEX + 1
+const GUEST_ITEMS_IMAGE_START = MISSED_MOMENTS_IMAGE_START + MISSED_MOMENTS.length
+const COUPLE_FAVORITES_IMAGE_START = GUEST_ITEMS_IMAGE_START + GUEST_ITEMS.length
+const CLOSING_IMAGE_INDEX = COUPLE_FAVORITES_IMAGE_START + COUPLE_FAVORITES.length
+
+function pickImage(images: string[], index: number): string | undefined {
+  return images.length > 0 ? images[index % images.length] : undefined
+}
+
 function getRgb(cssColor: string): [number, number, number] {
   const canvas = document.createElement('canvas')
   canvas.width = 1
@@ -86,24 +98,11 @@ function pickSecondary(colors: string[], accent: string) {
   return colors.slice(1).find(isVibrant) ?? accent
 }
 
-function PlaceholderImage({
-  label,
-  className = '',
-  background,
-}: {
-  label?: string
-  className?: string
-  background: string
-}) {
-  const textColor = useMemo(() => getReadableTextColor(background), [background])
-  return (
-    <div
-      className={`flex items-center justify-center text-xs font-bold ${className}`}
-      style={{ backgroundColor: background, color: textColor }}
-    >
-      {label}
-    </div>
-  )
+// A real photo pulled from the site for this slot — renders nothing at all
+// when the site didn't yield one, rather than a fake placeholder box.
+function PhotoSlot({ src, label, className = '' }: { src?: string; label?: string; className?: string }) {
+  if (!src) return null
+  return <img src={src} alt={label ?? ''} className={`object-cover ${className}`} />
 }
 
 // Real wedding sites are laid out as full-width blocks of alternating color,
@@ -230,7 +229,11 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
       </div>
 
       <FullBleedSection background={accentTint}>
-        <PlaceholderImage label="Hero Image" background={placeholderBackground} className="mb-6 h-56 w-full rounded-md" />
+        <PhotoSlot
+          src={pickImage(data.images, HERO_IMAGE_INDEX)}
+          label="Hero Image"
+          className="mb-6 h-56 w-full rounded-md"
+        />
         <h1 className="mb-2 text-4xl font-bold" style={{ fontFamily: headingFontFamily }}>
           {names}
         </h1>
@@ -269,9 +272,12 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
         subtitle="Some of the beautiful moments that happened while you were celebrating elsewhere."
       >
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {MISSED_MOMENTS.map((moment) => (
+          {MISSED_MOMENTS.map((moment, i) => (
             <div key={moment.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
-              <PlaceholderImage background={placeholderBackground} className="mb-3 h-24 w-full rounded" />
+              <PhotoSlot
+                src={pickImage(data.images, MISSED_MOMENTS_IMAGE_START + i)}
+                className="mb-3 h-24 w-full rounded"
+              />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
                 {moment.title}
               </h3>
@@ -290,7 +296,10 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
         <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
           {GUEST_ITEMS.map((item, i) => (
             <div key={i} className="mb-4 break-inside-avoid rounded-md border border-gray-200 bg-white p-3 text-gray-900">
-              <PlaceholderImage background={placeholderBackground} className="mb-3 h-32 w-full rounded" />
+              <PhotoSlot
+                src={pickImage(data.images, GUEST_ITEMS_IMAGE_START + i)}
+                className="mb-3 h-32 w-full rounded"
+              />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
                 {item.label}
               </h3>
@@ -307,9 +316,12 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
         subtitle={`Our favourite memories from the day, chosen by ${names}.`}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {COUPLE_FAVORITES.map((item) => (
+          {COUPLE_FAVORITES.map((item, i) => (
             <div key={item.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
-              <PlaceholderImage background={placeholderBackground} className="mb-3 h-32 w-full rounded" />
+              <PhotoSlot
+                src={pickImage(data.images, COUPLE_FAVORITES_IMAGE_START + i)}
+                className="mb-3 h-32 w-full rounded"
+              />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
                 {item.title}
               </h3>
@@ -343,7 +355,11 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
       </FullBleedSection>
 
       <FullBleedSection background={closingTint} center>
-        <PlaceholderImage label="Closing Image" background={placeholderBackground} className="mb-6 h-56 w-full rounded-md" />
+        <PhotoSlot
+          src={pickImage(data.images, CLOSING_IMAGE_INDEX)}
+          label="Closing Image"
+          className="mb-6 h-56 w-full rounded-md"
+        />
         <h2 className="mb-2 text-2xl font-bold" style={{ fontFamily: headingFontFamily }}>
           Thank you for being part of our story.
         </h2>
