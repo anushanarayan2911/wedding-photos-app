@@ -5,6 +5,7 @@ import { toCssFontFamily } from '../lib/font'
 interface MemoBoardProps {
   data: DesignLanguageResult
   sourceUrl: string | null
+  uploadedPhotos: string[]
   onBack: () => void
 }
 
@@ -179,9 +180,14 @@ function ShareBoardButton({ url }: { url: string }) {
   )
 }
 
-export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
+export default function MemoBoard({ data, sourceUrl, uploadedPhotos, onBack }: MemoBoardProps) {
   const { colors, couple } = data
   const glanceItems = data.schedule.length > 0 ? data.schedule : FALLBACK_GLANCE_ITEMS
+
+  // The couple's own uploads are more meaningful than anything scraped from
+  // their site, so they take the first slots (the hero photo especially),
+  // with the site's pulled photos filling in the rest.
+  const images = useMemo(() => [...uploadedPhotos, ...data.images], [uploadedPhotos, data.images])
 
   const shareUrl = useMemo(() => {
     if (!sourceUrl) return null
@@ -230,7 +236,7 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
 
       <FullBleedSection background={accentTint}>
         <PhotoSlot
-          src={pickImage(data.images, HERO_IMAGE_INDEX)}
+          src={pickImage(images, HERO_IMAGE_INDEX)}
           label="Hero Image"
           className="mb-6 h-56 w-full rounded-md"
         />
@@ -275,7 +281,7 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
           {MISSED_MOMENTS.map((moment, i) => (
             <div key={moment.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PhotoSlot
-                src={pickImage(data.images, MISSED_MOMENTS_IMAGE_START + i)}
+                src={pickImage(images, MISSED_MOMENTS_IMAGE_START + i)}
                 className="mb-3 h-24 w-full rounded"
               />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
@@ -297,7 +303,7 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
           {GUEST_ITEMS.map((item, i) => (
             <div key={i} className="mb-4 break-inside-avoid rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PhotoSlot
-                src={pickImage(data.images, GUEST_ITEMS_IMAGE_START + i)}
+                src={pickImage(images, GUEST_ITEMS_IMAGE_START + i)}
                 className="mb-3 h-32 w-full rounded"
               />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
@@ -319,7 +325,7 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
           {COUPLE_FAVORITES.map((item, i) => (
             <div key={item.title} className="rounded-md border border-gray-200 bg-white p-3 text-gray-900">
               <PhotoSlot
-                src={pickImage(data.images, COUPLE_FAVORITES_IMAGE_START + i)}
+                src={pickImage(images, COUPLE_FAVORITES_IMAGE_START + i)}
                 className="mb-3 h-32 w-full rounded"
               />
               <h3 className="mb-1 text-sm font-bold" style={{ fontFamily: headingFontFamily }}>
@@ -356,7 +362,7 @@ export default function MemoBoard({ data, sourceUrl, onBack }: MemoBoardProps) {
 
       <FullBleedSection background={closingTint} center>
         <PhotoSlot
-          src={pickImage(data.images, CLOSING_IMAGE_INDEX)}
+          src={pickImage(images, CLOSING_IMAGE_INDEX)}
           label="Closing Image"
           className="mb-6 h-56 w-full rounded-md"
         />

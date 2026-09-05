@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import NavBar from './components/NavBar'
 import CreateAccount from './components/CreateAccount'
+import UploadPhotos from './components/UploadPhotos'
+import PhotoGallery from './components/PhotoGallery'
 import SyncBoard from './components/SyncBoard'
 import MemoBoard from './components/MemoBoard'
 import type { DesignLanguageResult } from './types'
@@ -8,14 +10,18 @@ import { toCssFontFamily } from './lib/font'
 import { useDesignFont } from './hooks/useDesignFont'
 import { describeFetchError, fetchDesignLanguage } from './lib/designLanguage'
 
+type Stage = 'account' | 'sync' | 'upload' | 'gallery' | 'board'
+
 function App() {
-  const [hasAccount, setHasAccount] = useState(false)
+  const [stage, setStage] = useState<Stage>('account')
   const [boardData, setBoardData] = useState<DesignLanguageResult | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([])
 
   // A board reached via a shared "?site=" link (e.g. one the couple put on
   // their own wedding website) should open straight to that board — no
-  // account screen, no re-entering the URL.
+  // account screen, no re-entering the URL, no upload prompt (that's for the
+  // couple's own onboarding, not their guests).
   const [sharedLinkStatus, setSharedLinkStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [sharedLinkError, setSharedLinkError] = useState('')
 
@@ -29,7 +35,7 @@ function App() {
       .then((data) => {
         setBoardData(data)
         setSourceUrl(site)
-        setHasAccount(true)
+        setStage('board')
         setSharedLinkStatus('idle')
       })
       .catch((err) => {
@@ -48,33 +54,52 @@ function App() {
         <div className="px-10 py-14 text-center text-sm text-gray-500">Loading your board…</div>
       )}
 
-      {sharedLinkStatus !== 'loading' && !hasAccount && (
+      {sharedLinkStatus !== 'loading' && stage === 'board' && boardData && (
+        <MemoBoard
+          data={boardData}
+          sourceUrl={sourceUrl}
+          uploadedPhotos={uploadedPhotos}
+          onBack={() => {
+            setBoardData(null)
+            setSourceUrl(null)
+            setStage('sync')
+          }}
+        />
+      )}
+
+      {sharedLinkStatus !== 'loading' && stage !== 'board' && (
         <>
           {sharedLinkStatus === 'error' && (
             <p className="px-10 pt-8 text-center text-sm text-red-600">{sharedLinkError}</p>
           )}
-          <CreateAccount onCreated={() => setHasAccount(true)} onSignIn={() => setHasAccount(true)} />
-        </>
-      )}
 
-      {sharedLinkStatus !== 'loading' && hasAccount && (
-        boardData ? (
-          <MemoBoard
-            data={boardData}
-            sourceUrl={sourceUrl}
-            onBack={() => {
-              setBoardData(null)
-              setSourceUrl(null)
-            }}
-          />
-        ) : (
-          <SyncBoard
-            onContinue={(data, url) => {
-              setBoardData(data)
-              setSourceUrl(url)
-            }}
-          />
-        )
+          {stage === 'account' && (
+            <CreateAccount onCreated={() => setStage('sync')} onSignIn={() => setStage('sync')} />
+          )}
+
+          {stage === 'sync' && (
+            <SyncBoard
+              onContinue={(data, url) => {
+                setBoardData(data)
+                setSourceUrl(url)
+                setStage('upload')
+              }}
+            />
+          )}
+
+          {stage === 'upload' && (
+            <UploadPhotos
+              onContinue={(photoUrls) => {
+                setUploadedPhotos(photoUrls)
+                setStage('gallery')
+              }}
+            />
+          )}
+
+          {stage === 'gallery' && (
+            <PhotoGallery photos={uploadedPhotos} onContinue={() => setStage('board')} />
+          )}
+        </>
       )}
     </div>
   )
